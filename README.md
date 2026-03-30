@@ -22,10 +22,13 @@ It is built with plain PHP and JSON, requires no database, and provides a clean 
 ## Screenshots
 
 ### Light Mode
-![PenguLab Light Mode](screenshot1.png)
+![PenguLab Light Mode](screenshot01.png)
 
 ### Dark Mode
-![PenguLab Dark Mode](screenshot2.png)
+![PenguLab Dark Mode](screenshot03.png)
+
+### Settings
+![PenguLab Settings](screenshot02.png)
 
 ## Requirements
 
