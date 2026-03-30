@@ -31,6 +31,7 @@ docker pull ghcr.io/borderlane-ha/pengulab:latest
 nano compose.yml
 ```
 
+compose.yml:
 ```bash
 services:
   pengulab:
