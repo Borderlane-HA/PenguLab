@@ -19,6 +19,14 @@ It is built with plain PHP and JSON, requires no database, and provides a clean 
 - Automatic detection of additional language packs
 - Simple deployment on any standard PHP web server
 
+## Screenshots
+
+### Light Mode
+![PenguLab Light Mode](screenshot1.png)
+
+### Dark Mode
+![PenguLab Dark Mode](screenshot2.png)
+
 ## Requirements
 
 - PHP **8.1+**
