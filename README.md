@@ -21,7 +21,7 @@ It is built with plain PHP and JSON, requires no database, and provides a clean 
 
 ## Docker
 
-on Dockerhost your user home dir
+On the Docker host, create a new folder in your user home directory for PenguLab.
 
 ```bash
 mkdir -p pengulab
