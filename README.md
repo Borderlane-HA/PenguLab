@@ -57,8 +57,10 @@ Strg X -> Y -> Enter
 docker compose up -d
 ```
 
+open
 ```bash
 http://YOURDOCKERHOST:19961
+http://YOURDOCKERHOST:19961/index.php?category=YOURCATEGORY
 ```
 
 
