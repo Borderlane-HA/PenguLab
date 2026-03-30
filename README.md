@@ -350,17 +350,7 @@ To update PenguLab:
 
 ## Customization Ideas
 
-PenguLab is intentionally simple and easy to extend.
-
-Possible future enhancements:
-
-- per-user settings
-- authentication
-- custom themes
-- app health checks
-- search
-- icons from URLs or favicon lookup
-- Docker image / container deployment
+Category view: index.php?category=YOURCATEGORY
 
 ## Troubleshooting
 
