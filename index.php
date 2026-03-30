@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 $dataFile = __DIR__ . '/apps.json';
+$langDir = __DIR__ . '/lang';
 
 function send_json($data, int $status = 200): void {
     http_response_code($status);
@@ -9,6 +10,45 @@ function send_json($data, int $status = 200): void {
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     exit;
 }
+
+function scan_languages(string $langDir): array {
+    $result = [];
+
+    if (!is_dir($langDir)) {
+        return [['code' => 'de', 'label' => 'Deutsch'], ['code' => 'en', 'label' => 'English']];
+    }
+
+    foreach (glob($langDir . '/*.json') ?: [] as $file) {
+        $code = basename($file, '.json');
+        $json = @file_get_contents($file);
+        $data = is_string($json) ? json_decode($json, true) : null;
+        $label = is_array($data) && isset($data['_meta']['label']) ? (string)$data['_meta']['label'] : strtoupper($code);
+        $result[] = ['code' => $code, 'label' => $label];
+    }
+
+    usort($result, static fn(array $a, array $b): int => strcmp($a['label'], $b['label']));
+
+    if (!$result) {
+        $result = [['code' => 'de', 'label' => 'Deutsch'], ['code' => 'en', 'label' => 'English']];
+    }
+
+    return $result;
+}
+
+function load_language_pack(string $langDir, string $code): array {
+    $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '', $code) ?: 'de';
+    $file = $langDir . '/' . $safeCode . '.json';
+
+    if (!is_file($file)) {
+        $file = $langDir . '/de.json';
+    }
+
+    $json = @file_get_contents($file);
+    $data = is_string($json) ? json_decode($json, true) : null;
+
+    return is_array($data) ? $data : ['_meta' => ['label' => 'Deutsch']];
+}
+
 
 function resolve_url(string $baseUrl, string $relativeUrl): string {
     if (preg_match('~^https?://~i', $relativeUrl)) {
@@ -176,6 +216,7 @@ function default_settings(): array {
         'rows' => 3,
         'cols' => 5,
         'theme' => 'light',
+        'language' => 'de',
     ];
 }
 
@@ -191,7 +232,7 @@ function ensure_data_file(string $dataFile): void {
     }
 }
 
-function sanitize_settings(array $settings): array {
+function sanitize_settings(array $settings, ?array $availableLanguages = null): array {
     $viewMode = (string)($settings['viewMode'] ?? 'custom');
     if (!in_array($viewMode, ['4x3', '6x4', 'custom'], true)) {
         $viewMode = '4x3';
@@ -213,12 +254,20 @@ function sanitize_settings(array $settings): array {
         $theme = 'light';
     }
 
+    $language = trim((string)($settings['language'] ?? 'de')) ?: 'de';
+    $availableLanguages = $availableLanguages ?? scan_languages($GLOBALS['langDir']);
+    $validCodes = array_map(static fn(array $entry): string => (string)$entry['code'], $availableLanguages);
+    if (!in_array($language, $validCodes, true)) {
+        $language = in_array('de', $validCodes, true) ? 'de' : ($validCodes[0] ?? 'de');
+    }
+
     return [
         'selectedCategory' => trim((string)($settings['selectedCategory'] ?? 'all')) ?: 'all',
         'viewMode' => $viewMode,
         'rows' => $rows,
         'cols' => $cols,
         'theme' => $theme,
+        'language' => $language,
     ];
 }
 
@@ -244,8 +293,9 @@ function read_data(string $dataFile): array {
     }
 
     if (is_array($data)) {
+        $availableLanguages = scan_languages($GLOBALS['langDir']);
         return [
-            'settings' => sanitize_settings(is_array($data['settings'] ?? null) ? $data['settings'] : []),
+            'settings' => sanitize_settings(is_array($data['settings'] ?? null) ? $data['settings'] : [], $availableLanguages),
             'apps' => sanitize_apps(is_array($data['apps'] ?? null) ? $data['apps'] : []),
         ];
     }
@@ -289,6 +339,15 @@ function sanitize_apps(array $apps): array {
     return $result;
 }
 
+if (isset($_GET['api']) && $_GET['api'] === 'lang') {
+    $code = (string)($_GET['code'] ?? 'de');
+    send_json([
+        'ok' => true,
+        'code' => $code,
+        'pack' => load_language_pack($langDir, $code),
+    ]);
+}
+
 if (isset($_GET['api']) && $_GET['api'] === 'favicon') {
     $url = (string)($_GET['url'] ?? '');
     send_json(detect_favicon($url));
@@ -301,6 +360,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             'ok' => true,
             'apps' => $payload['apps'],
             'settings' => $payload['settings'],
+            'availableLanguages' => scan_languages($langDir),
         ]);
     }
 
@@ -312,8 +372,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             send_json(['ok' => false, 'error' => 'Ungültige Nutzdaten.'], 400);
         }
 
+        $availableLanguages = scan_languages($langDir);
         $apps = sanitize_apps($decoded['apps']);
-        $settings = sanitize_settings(is_array($decoded['settings'] ?? null) ? $decoded['settings'] : []);
+        $settings = sanitize_settings(is_array($decoded['settings'] ?? null) ? $decoded['settings'] : [], $availableLanguages);
         $json = json_encode(
             ['settings' => $settings, 'apps' => $apps],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
@@ -328,7 +389,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             send_json(['ok' => false, 'error' => 'apps.json konnte nicht geschrieben werden.'], 500);
         }
 
-        send_json(['ok' => true, 'apps' => $apps, 'settings' => $settings]);
+        send_json(['ok' => true, 'apps' => $apps, 'settings' => $settings, 'availableLanguages' => $availableLanguages]);
     }
 
     send_json(['ok' => false, 'error' => 'Methode nicht erlaubt.'], 405);
@@ -1125,7 +1186,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark"></div>
-      <div>PenguLab</div>
+      <div id="brandTitle">PenguLab</div>
     </div>
     <div class="toolbar-actions"></div>
   </header>
@@ -1133,7 +1194,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
   <main class="page">
     <section class="page-header">
       <div class="page-header-bar">
-        <h1 class="page-title">Apps</h1>
+        <h1 class="page-title" id="appsTitle">Apps</h1>
         <div class="page-header-center">
           <input class="search-input" id="searchInput" type="text" aria-label="Search apps" />
         </div>
@@ -1141,11 +1202,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
           <button class="settings-btn" id="settingsBtn" type="button" aria-label="Einstellungen">⚙</button>
           <div class="settings-panel" id="settingsPanel" hidden>
             <div class="settings-section">
-              <label class="settings-label" for="categoryFilter">Kategorie</label>
+              <label class="settings-label" id="settingsLabelLanguage" for="languageSelect">Sprache</label>
+              <select class="category-select" id="languageSelect" aria-label="Sprache"></select>
+            </div>
+            <div class="settings-section">
+              <label class="settings-label" id="settingsLabelCategory" for="categoryFilter">Kategorie</label>
               <select class="category-select" id="categoryFilter" aria-label="Kategorie filtern"></select>
             </div>
             <div class="settings-section">
-              <label class="settings-label" for="customCols">Raster</label>
+              <label class="settings-label" id="settingsLabelGrid" for="customCols">Raster</label>
               <div class="custom-grid-inputs active" id="customGridInputs" aria-label="Rastergröße">
                 <input class="grid-number" id="customCols" type="number" min="1" max="12" step="1" value="5" aria-label="Spalten" />
                 <span>×</span>
@@ -1153,21 +1218,21 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
               </div>
             </div>
             <div class="settings-section">
-              <label class="settings-label">Design</label>
+              <label class="settings-label" id="settingsLabelDesign">Design</label>
               <div class="theme-switch">
                 <button class="theme-btn" id="lightModeBtn" type="button" aria-label="Lightmode">☀</button>
                 <button class="theme-btn" id="darkModeBtn" type="button" aria-label="Darkmode">☾</button>
               </div>
             </div>
             <div class="settings-section">
-              <label class="settings-label">Aktionen</label>
+              <label class="settings-label" id="settingsLabelActions">Aktionen</label>
               <div class="panel-actions">
                 <button class="btn" id="editModeBtn" type="button">Bearbeiten</button>
                 <button class="btn primary" id="addBtn" type="button">Neue App</button>
               </div>
             </div>
             <div class="settings-section">
-              <label class="settings-label">Konfiguration</label>
+              <label class="settings-label" id="settingsLabelConfig">Konfiguration</label>
               <div class="panel-actions">
                 <button class="btn" id="exportBtn" type="button">Export</button>
                 <label class="btn" for="importFile" style="cursor:pointer;">Import</label>
@@ -1198,26 +1263,26 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       <div class="modal-body">
         <div class="form-grid">
           <div class="field">
-            <label for="appName">App-Name</label>
+            <label id="labelAppName" for="appName">App-Name</label>
             <input id="appName" name="appName" type="text" maxlength="80" required />
           </div>
           <div class="field">
-            <label for="appUrl">URL</label>
+            <label id="labelAppUrl" for="appUrl">URL</label>
             <input id="appUrl" name="appUrl" type="url" placeholder="https://..." required />
           </div>
           <div class="field">
-            <label for="appDescription">Beschreibung</label>
+            <label id="labelAppDescription" for="appDescription">Beschreibung</label>
             <textarea id="appDescription" name="appDescription" maxlength="240" placeholder="Kurze Beschreibung..."></textarea>
           </div>
           <div class="field">
-            <label for="appCategory">Kategorie</label>
+            <label id="labelAppCategory" for="appCategory">Kategorie</label>
             <input id="appCategory" name="appCategory" type="text" maxlength="60" list="categoryOptions" placeholder="z. B. Smart Home" />
             <datalist id="categoryOptions"></datalist>
           </div>
           <div class="field">
-            <label for="appImage">Logo / Bild</label>
+            <label id="labelAppImage" for="appImage">Logo / Bild</label>
             <input id="appImage" name="appImage" type="file" accept="image/*" />
-            <p class="hint">Logos werden beim Hochladen automatisch auf transparente Ränder geprüft, damit sie größer und einheitlicher wirken.</p>
+            <p class="hint" id="imageHint">Logos werden beim Hochladen automatisch auf transparente Ränder geprüft, damit sie größer und einheitlicher wirken.</p>
           </div>
           <div class="modal-preview" id="modalPreview"></div>
         </div>
@@ -1242,11 +1307,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       viewMode: 'custom',
       rows: 3,
       cols: 5,
-      theme: 'light'
+      theme: 'light',
+      language: 'de'
     };
 
     let apps = [];
     let settings = { ...DEFAULT_SETTINGS };
+    let availableLanguages = [];
+    let translations = {};
     let urlCategoryOverride = (() => {
       const raw = new URLSearchParams(window.location.search).get('category') || '';
       const cleaned = raw.trim();
@@ -1272,6 +1340,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     const searchInput = document.getElementById('searchInput');
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsPanel = document.getElementById('settingsPanel');
+    const languageSelect = document.getElementById('languageSelect');
     const categoryFilter = document.getElementById('categoryFilter');
     const customGridInputs = document.getElementById('customGridInputs');
     const customCols = document.getElementById('customCols');
@@ -1329,6 +1398,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       next.cols = clampInt(next.cols, DEFAULT_SETTINGS.cols);
       next.selectedCategory = String(next.selectedCategory || 'all');
       next.theme = next.theme === 'dark' ? 'dark' : 'light';
+      next.language = String(next.language || 'de');
 
       if (next.viewMode === '4x3') {
         next.rows = 3;
@@ -1339,6 +1409,83 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
 
       return next;
+    }
+
+    function t(key, vars = {}) {
+      let value = translations[key] || key;
+      Object.entries(vars).forEach(([name, replacement]) => {
+        value = value.replaceAll(`{${name}}`, String(replacement));
+      });
+      return value;
+    }
+
+    async function loadLanguage(code) {
+      try {
+        const endpoint = `${API_URL.replace('api=apps', 'api=lang')}&code=${encodeURIComponent(code)}`;
+        const response = await fetch(endpoint, { cache: 'no-store' });
+        const data = await response.json();
+        if (response.ok && data.ok && data.pack) {
+          translations = data.pack;
+        }
+      } catch (error) {
+        console.error(error);
+      }
+
+      try {
+        applyTranslations();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    function applyTranslations() {
+      const setText = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value;
+      };
+
+      setText('brandTitle', t('brand'));
+      setText('appsTitle', t('apps'));
+      setText('settingsLabelLanguage', t('settings_language'));
+      setText('settingsLabelCategory', t('settings_category'));
+      setText('settingsLabelGrid', t('settings_grid'));
+      setText('settingsLabelDesign', t('settings_design'));
+      setText('settingsLabelActions', t('settings_actions'));
+      setText('settingsLabelConfig', t('settings_configuration'));
+
+      if (settingsBtn) {
+        settingsBtn.title = t('settings');
+        settingsBtn.setAttribute('aria-label', t('settings'));
+      }
+
+      if (editModeBtn) editModeBtn.textContent = editMode ? t('done') : t('edit');
+      if (addBtn) addBtn.textContent = t('new_app');
+      if (exportBtn) exportBtn.textContent = t('export');
+      if (importLabel) importLabel.textContent = t('import');
+      if (prevPageBtn) prevPageBtn.textContent = t('prev');
+      if (nextPageBtn) nextPageBtn.textContent = t('next');
+
+      if (lightModeBtn) {
+        lightModeBtn.title = t('light');
+        lightModeBtn.setAttribute('aria-label', t('light'));
+      }
+      if (darkModeBtn) {
+        darkModeBtn.title = t('dark');
+        darkModeBtn.setAttribute('aria-label', t('dark'));
+      }
+
+      setText('labelAppName', t('field_name'));
+      setText('labelAppUrl', t('field_url'));
+      setText('labelAppDescription', t('field_description'));
+      setText('labelAppCategory', t('field_category'));
+      setText('labelAppImage', t('field_image'));
+      setText('imageHint', t('image_hint'));
+
+      if (saveBtn) saveBtn.textContent = t('save');
+      if (cancelBtn) cancelBtn.textContent = t('cancel');
+      if (removeImageBtn) removeImageBtn.textContent = t('remove_image');
+      if (cloneBtn) cloneBtn.textContent = t('clone');
+      if (deleteBtn) deleteBtn.textContent = t('delete');
     }
 
     function getCategories() {
@@ -1404,12 +1551,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       const hasUncategorized = apps.some((entry) => !(entry.category || '').trim());
 
       const options = [
-        { value: 'all', label: 'Alle Kategorien' },
+        { value: 'all', label: t('all_categories') },
         ...categories.map((category) => ({ value: category, label: category })),
       ];
 
       if (hasUncategorized) {
-        options.push({ value: '__uncategorized__', label: 'Ohne Kategorie' });
+        options.push({ value: '__uncategorized__', label: t('uncategorized') });
       }
 
       categoryFilter.innerHTML = options
@@ -1429,6 +1576,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       categoryOptions.innerHTML = categories
         .map((category) => `<option value="${escapeAttribute(category)}"></option>`)
         .join('');
+
+      languageSelect.innerHTML = availableLanguages
+        .map((entry) => `<option value="${escapeAttribute(entry.code)}">${escapeHtml(entry.label)}</option>`)
+        .join('');
+      languageSelect.value = settings.language || 'de';
     }
 
     async function loadApps() {
@@ -1438,17 +1590,21 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         if (!response.ok || !data.ok) throw new Error(data.error || 'Apps konnten nicht geladen werden.');
         apps = normalizeApps(data.apps);
         settings = normalizeSettings(data.settings);
+        availableLanguages = Array.isArray(data.availableLanguages) ? data.availableLanguages : [];
         applyThemeSettings();
         applyGridSettings();
         updateCategoryControls();
+        await loadLanguage(settings.language || 'de');
         render();
       } catch (error) {
         console.error(error);
         apps = [];
         settings = normalizeSettings(DEFAULT_SETTINGS);
+        availableLanguages = [{ code: 'de', label: 'Deutsch' }, { code: 'en', label: 'English' }];
         applyThemeSettings();
         applyGridSettings();
         updateCategoryControls();
+        await loadLanguage(settings.language || 'de');
         render();
       }
     }
@@ -1466,9 +1622,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
       apps = normalizeApps(data.apps);
       settings = normalizeSettings(data.settings);
+      availableLanguages = Array.isArray(data.availableLanguages) ? data.availableLanguages : availableLanguages;
       applyThemeSettings();
       applyGridSettings();
       updateCategoryControls();
+      await loadLanguage(settings.language || 'de');
       render();
     }
 
@@ -1485,7 +1643,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       editMode = enabled;
       document.body.classList.toggle('edit-mode', editMode);
       editModeBtn.classList.toggle('active', editMode);
-      editModeBtn.textContent = editMode ? 'Fertig' : 'Bearbeiten';
+      editModeBtn.textContent = editMode ? t('done') : t('edit');
       render();
     }
 
@@ -1557,7 +1715,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             <div class="tile-info">
               <div class="tile-text-stack">
                 <h3 class="tile-title">${escapeHtml(app.name)}</h3>
-                <p class="tile-desc">${escapeHtml(app.description || 'Keine Beschreibung hinterlegt.')}</p>
+                <p class="tile-desc">${escapeHtml(app.description || t('no_description'))}</p>
               </div>
             </div>
           </a>
@@ -1614,7 +1772,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         grid.appendChild(tile);
       }
 
-      pageIndicator.textContent = `Seite ${currentPage + 1} / ${pages}`;
+      pageIndicator.textContent = t('page_of', { current: currentPage + 1, total: pages });
       prevPageBtn.disabled = currentPage === 0;
       nextPageBtn.disabled = currentPage >= pages - 1;
 
@@ -1648,7 +1806,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       pendingImage = null;
       suggestedImage = '';
       keepExistingImage = false;
-      dialogTitle.textContent = 'App anlegen';
+      dialogTitle.textContent = t('dialog_create');
       deleteBtn.style.display = 'none';
       cloneBtn.style.display = 'none';
       cloneSourceId = null;
@@ -1668,7 +1826,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       pendingImage = null;
       suggestedImage = '';
       keepExistingImage = true;
-      dialogTitle.textContent = 'App bearbeiten';
+      dialogTitle.textContent = t('dialog_edit');
       deleteBtn.style.display = 'inline-flex';
       cloneBtn.style.display = 'inline-flex';
       cloneSourceId = id;
@@ -1695,7 +1853,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     async function removeApp(id) {
       const app = apps.find((entry) => entry.id === id);
       if (!app) return;
-      const ok = confirm(`„${app.name}“ wirklich löschen?`);
+      const ok = confirm(t('confirm_delete', { name: app.name }));
       if (!ok) return;
       apps = apps.filter((entry) => entry.id !== id);
       try {
@@ -1870,6 +2028,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
     });
 
+    languageSelect.addEventListener('change', async () => {
+      settings.language = languageSelect.value || 'de';
+      try {
+        await saveApps();
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
     categoryFilter.addEventListener('change', async () => {
       urlCategoryOverride = '';
       settings.selectedCategory = categoryFilter.value || 'all';
@@ -1958,7 +2125,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       keepExistingImage = false;
       editingId = null;
       cloneSourceId = null;
-      dialogTitle.textContent = 'Kachel klonen';
+      dialogTitle.textContent = t('dialog_clone');
       deleteBtn.style.display = 'none';
       cloneBtn.style.display = 'none';
       appName.focus();
