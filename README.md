@@ -27,7 +27,14 @@ on Dockerhost your user home dir
 mkdir -p pengulab
 cd pengulab
 touch apps.json
+chmod 666 apps.json
+```
+
+```bash
 docker pull ghcr.io/borderlane-ha/pengulab:latest
+```
+
+```bash
 nano compose.yml
 ```
 
