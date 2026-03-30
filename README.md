@@ -19,6 +19,37 @@ It is built with plain PHP and JSON, requires no database, and provides a clean 
 - Automatic detection of additional language packs
 - Simple deployment on any standard PHP web server
 
+## Docker
+
+on Dockerhost your user home dir
+
+```bash
+mkdir -p pengulab
+cd pengulab
+touch apps.json
+docker pull ghcr.io/borderlane-ha/pengulab:latest
+nano compose.yml
+```
+
+```bash
+services:
+  pengulab:
+    image: ghcr.io/borderlane-ha/pengulab:latest
+    container_name: pengulab
+    restart: unless-stopped
+    ports:
+      - "19961:8080"
+    volumes:
+      - ./apps.json:/app/apps.json
+```
+
+Strg X -> Y -> Enter
+
+```bash
+docker compose up -d
+```
+
+
 ## Screenshots
 
 ### Light Mode
