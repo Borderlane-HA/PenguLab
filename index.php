@@ -2,7 +2,6 @@
 declare(strict_types=1);
 
 $dataFile = __DIR__ . '/apps.json';
-$langDir = __DIR__ . '/lang';
 
 function send_json($data, int $status = 200): void {
     http_response_code($status);
@@ -11,42 +10,162 @@ function send_json($data, int $status = 200): void {
     exit;
 }
 
-function scan_languages(string $langDir): array {
-    $result = [];
-
-    if (!is_dir($langDir)) {
-        return [['code' => 'de', 'label' => 'Deutsch'], ['code' => 'en', 'label' => 'English']];
+function resolve_url(string $baseUrl, string $relativeUrl): string {
+    if (preg_match('~^https?://~i', $relativeUrl)) {
+        return $relativeUrl;
     }
 
-    foreach (glob($langDir . '/*.json') ?: [] as $file) {
-        $code = basename($file, '.json');
-        $json = @file_get_contents($file);
-        $data = is_string($json) ? json_decode($json, true) : null;
-        $label = is_array($data) && isset($data['_meta']['label']) ? (string)$data['_meta']['label'] : strtoupper($code);
-        $result[] = ['code' => $code, 'label' => $label];
+    if (str_starts_with($relativeUrl, '//')) {
+        $base = parse_url($baseUrl);
+        $scheme = $base['scheme'] ?? 'https';
+        return $scheme . ':' . $relativeUrl;
     }
 
-    usort($result, static fn(array $a, array $b): int => strcmp($a['label'], $b['label']));
-
-    if (!$result) {
-        $result = [['code' => 'de', 'label' => 'Deutsch'], ['code' => 'en', 'label' => 'English']];
+    $base = parse_url($baseUrl);
+    if (!$base || !isset($base['scheme'], $base['host'])) {
+        return $relativeUrl;
     }
 
-    return $result;
+    $scheme = $base['scheme'];
+    $host = $base['host'];
+    $port = isset($base['port']) ? ':' . $base['port'] : '';
+    $basePath = $base['path'] ?? '/';
+
+    if (str_starts_with($relativeUrl, '/')) {
+        return $scheme . '://' . $host . $port . $relativeUrl;
+    }
+
+    $dir = rtrim(str_replace('\\', '/', dirname($basePath)), '/');
+    if ($dir === '') {
+        $dir = '/';
+    }
+
+    return $scheme . '://' . $host . $port . rtrim($dir, '/') . '/' . ltrim($relativeUrl, '/');
 }
 
-function load_language_pack(string $langDir, string $code): array {
-    $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '', $code) ?: 'de';
-    $file = $langDir . '/' . $safeCode . '.json';
+function fetch_image_as_data_uri(string $imageUrl): string {
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 5,
+            'follow_location' => 1,
+            'max_redirects' => 3,
+            'header' => "User-Agent: PenguLab/1.0\r\n"
+        ],
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+        ]
+    ]);
 
-    if (!is_file($file)) {
-        $file = $langDir . '/de.json';
+    $binary = @file_get_contents($imageUrl, false, $context, 0, 1048576);
+    if (!is_string($binary) || $binary === '') {
+        return '';
     }
 
-    $json = @file_get_contents($file);
-    $data = is_string($json) ? json_decode($json, true) : null;
+    $mime = '';
 
-    return is_array($data) ? $data : ['_meta' => ['label' => 'Deutsch']];
+    if (!empty($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $headerLine) {
+            if (stripos($headerLine, 'Content-Type:') === 0) {
+                $mime = trim((string)substr($headerLine, strlen('Content-Type:')));
+                $mime = strtolower(trim(explode(';', $mime, 2)[0]));
+                break;
+            }
+        }
+    }
+
+    if ($mime === '') {
+        $imageInfo = @getimagesizefromstring($binary);
+        if (is_array($imageInfo) && isset($imageInfo['mime'])) {
+            $mime = strtolower((string)$imageInfo['mime']);
+        }
+    }
+
+    if ($mime === '') {
+        $path = parse_url($imageUrl, PHP_URL_PATH);
+        $extension = strtolower(pathinfo((string)$path, PATHINFO_EXTENSION));
+        $mimeMap = [
+            'png' => 'image/png',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'svg' => 'image/svg+xml',
+            'ico' => 'image/x-icon',
+            'bmp' => 'image/bmp',
+            'avif' => 'image/avif',
+        ];
+        $mime = $mimeMap[$extension] ?? '';
+    }
+
+    $allowed = [
+        'image/png',
+        'image/jpeg',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+        'image/x-icon',
+        'image/vnd.microsoft.icon',
+        'image/bmp',
+        'image/avif',
+    ];
+
+    if ($mime === '' || !in_array($mime, $allowed, true)) {
+        return '';
+    }
+
+    return 'data:' . $mime . ';base64,' . base64_encode($binary);
+}
+
+
+function detect_favicon(string $pageUrl): array {
+    $pageUrl = trim($pageUrl);
+    if (!preg_match('~^https?://~i', $pageUrl)) {
+        return ['ok' => false, 'image' => ''];
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 5,
+            'follow_location' => 1,
+            'max_redirects' => 3,
+            'header' => "User-Agent: PenguLab/1.0\r\n"
+        ],
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+        ]
+    ]);
+
+    $html = @file_get_contents($pageUrl, false, $context, 0, 524288);
+    $favicon = '';
+
+    if (is_string($html) && $html !== '') {
+        $patterns = [
+            '~<link[^>]*rel=["\'][^"\']*icon[^"\']*["\'][^>]*href=["\']([^"\']+)["\'][^>]*>~i',
+            '~<link[^>]*href=["\']([^"\']+)["\'][^>]*rel=["\'][^"\']*icon[^"\']*["\'][^>]*>~i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $html, $matches)) {
+                $favicon = resolve_url($pageUrl, html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5));
+                break;
+            }
+        }
+    }
+
+    if ($favicon === '') {
+        $parts = parse_url($pageUrl);
+        if ($parts && isset($parts['scheme'], $parts['host'])) {
+            $favicon = $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '') . '/favicon.ico';
+        }
+    }
+
+    $dataUri = $favicon !== '' ? fetch_image_as_data_uri($favicon) : '';
+
+    return ['ok' => $dataUri !== '', 'image' => $dataUri];
 }
 
 
@@ -57,7 +176,6 @@ function default_settings(): array {
         'rows' => 3,
         'cols' => 5,
         'theme' => 'light',
-        'language' => 'de',
     ];
 }
 
@@ -73,7 +191,7 @@ function ensure_data_file(string $dataFile): void {
     }
 }
 
-function sanitize_settings(array $settings, ?array $availableLanguages = null): array {
+function sanitize_settings(array $settings): array {
     $viewMode = (string)($settings['viewMode'] ?? 'custom');
     if (!in_array($viewMode, ['4x3', '6x4', 'custom'], true)) {
         $viewMode = '4x3';
@@ -95,20 +213,12 @@ function sanitize_settings(array $settings, ?array $availableLanguages = null): 
         $theme = 'light';
     }
 
-    $language = trim((string)($settings['language'] ?? 'de')) ?: 'de';
-    $availableLanguages = $availableLanguages ?? scan_languages($GLOBALS['langDir']);
-    $validCodes = array_map(static fn(array $entry): string => (string)$entry['code'], $availableLanguages);
-    if (!in_array($language, $validCodes, true)) {
-        $language = in_array('de', $validCodes, true) ? 'de' : ($validCodes[0] ?? 'de');
-    }
-
     return [
         'selectedCategory' => trim((string)($settings['selectedCategory'] ?? 'all')) ?: 'all',
         'viewMode' => $viewMode,
         'rows' => $rows,
         'cols' => $cols,
         'theme' => $theme,
-        'language' => $language,
     ];
 }
 
@@ -134,9 +244,8 @@ function read_data(string $dataFile): array {
     }
 
     if (is_array($data)) {
-        $availableLanguages = scan_languages($GLOBALS['langDir']);
         return [
-            'settings' => sanitize_settings(is_array($data['settings'] ?? null) ? $data['settings'] : [], $availableLanguages),
+            'settings' => sanitize_settings(is_array($data['settings'] ?? null) ? $data['settings'] : []),
             'apps' => sanitize_apps(is_array($data['apps'] ?? null) ? $data['apps'] : []),
         ];
     }
@@ -180,13 +289,9 @@ function sanitize_apps(array $apps): array {
     return $result;
 }
 
-if (isset($_GET['api']) && $_GET['api'] === 'lang') {
-    $code = (string)($_GET['code'] ?? 'de');
-    send_json([
-        'ok' => true,
-        'code' => $code,
-        'pack' => load_language_pack($langDir, $code),
-    ]);
+if (isset($_GET['api']) && $_GET['api'] === 'favicon') {
+    $url = (string)($_GET['url'] ?? '');
+    send_json(detect_favicon($url));
 }
 
 if (isset($_GET['api']) && $_GET['api'] === 'apps') {
@@ -196,7 +301,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             'ok' => true,
             'apps' => $payload['apps'],
             'settings' => $payload['settings'],
-            'availableLanguages' => scan_languages($langDir),
         ]);
     }
 
@@ -208,9 +312,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             send_json(['ok' => false, 'error' => 'Ungültige Nutzdaten.'], 400);
         }
 
-        $availableLanguages = scan_languages($langDir);
         $apps = sanitize_apps($decoded['apps']);
-        $settings = sanitize_settings(is_array($decoded['settings'] ?? null) ? $decoded['settings'] : [], $availableLanguages);
+        $settings = sanitize_settings(is_array($decoded['settings'] ?? null) ? $decoded['settings'] : []);
         $json = json_encode(
             ['settings' => $settings, 'apps' => $apps],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
@@ -225,7 +328,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             send_json(['ok' => false, 'error' => 'apps.json konnte nicht geschrieben werden.'], 500);
         }
 
-        send_json(['ok' => true, 'apps' => $apps, 'settings' => $settings, 'availableLanguages' => $availableLanguages]);
+        send_json(['ok' => true, 'apps' => $apps, 'settings' => $settings]);
     }
 
     send_json(['ok' => false, 'error' => 'Methode nicht erlaubt.'], 405);
@@ -525,6 +628,35 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       margin: 0;
       font-size: clamp(1.55rem, 1vw + 1rem, 2rem);
       letter-spacing: -0.04em;
+    }
+
+    .page-header-center {
+      flex: 1 1 420px;
+      display: flex;
+      justify-content: center;
+      min-width: 220px;
+    }
+
+    .search-input {
+      width: min(100%, 560px);
+      border: 1px solid var(--control-border);
+      background: var(--control-bg);
+      color: var(--text);
+      border-radius: 18px;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 600;
+      box-shadow: 0 4px 14px rgba(16, 35, 73, 0.05);
+      outline: none;
+    }
+
+    .search-input::placeholder {
+      color: transparent;
+    }
+
+    .search-input:focus {
+      border-color: #9fbbff;
+      box-shadow: 0 0 0 4px rgba(123, 163, 255, 0.12);
     }
 
     .category-select {
@@ -993,7 +1125,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark"></div>
-      <div id="brandTitle">PenguLab</div>
+      <div>PenguLab</div>
     </div>
     <div class="toolbar-actions"></div>
   </header>
@@ -1001,20 +1133,19 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
   <main class="page">
     <section class="page-header">
       <div class="page-header-bar">
-        <h1 class="page-title" id="appsTitle">Apps</h1>
+        <h1 class="page-title">Apps</h1>
+        <div class="page-header-center">
+          <input class="search-input" id="searchInput" type="text" aria-label="Search apps" />
+        </div>
         <div class="settings-wrap">
           <button class="settings-btn" id="settingsBtn" type="button" aria-label="Einstellungen">⚙</button>
           <div class="settings-panel" id="settingsPanel" hidden>
             <div class="settings-section">
-              <label class="settings-label" id="settingsLabelLanguage" for="languageSelect">Sprache</label>
-              <select class="category-select" id="languageSelect" aria-label="Sprache"></select>
-            </div>
-            <div class="settings-section">
-              <label class="settings-label" id="settingsLabelCategory" for="categoryFilter">Kategorie</label>
+              <label class="settings-label" for="categoryFilter">Kategorie</label>
               <select class="category-select" id="categoryFilter" aria-label="Kategorie filtern"></select>
             </div>
             <div class="settings-section">
-              <label class="settings-label" id="settingsLabelGrid" for="customCols">Raster</label>
+              <label class="settings-label" for="customCols">Raster</label>
               <div class="custom-grid-inputs active" id="customGridInputs" aria-label="Rastergröße">
                 <input class="grid-number" id="customCols" type="number" min="1" max="12" step="1" value="5" aria-label="Spalten" />
                 <span>×</span>
@@ -1022,24 +1153,24 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
               </div>
             </div>
             <div class="settings-section">
-              <label class="settings-label" id="settingsLabelDesign">Design</label>
+              <label class="settings-label">Design</label>
               <div class="theme-switch">
                 <button class="theme-btn" id="lightModeBtn" type="button" aria-label="Lightmode">☀</button>
                 <button class="theme-btn" id="darkModeBtn" type="button" aria-label="Darkmode">☾</button>
               </div>
             </div>
             <div class="settings-section">
-              <label class="settings-label" id="settingsLabelActions">Aktionen</label>
+              <label class="settings-label">Aktionen</label>
               <div class="panel-actions">
                 <button class="btn" id="editModeBtn" type="button">Bearbeiten</button>
                 <button class="btn primary" id="addBtn" type="button">Neue App</button>
               </div>
             </div>
             <div class="settings-section">
-              <label class="settings-label" id="settingsLabelConfig">Konfiguration</label>
+              <label class="settings-label">Konfiguration</label>
               <div class="panel-actions">
                 <button class="btn" id="exportBtn" type="button">Export</button>
-                <label class="btn" id="importLabel" for="importFile" style="cursor:pointer;">Import</label>
+                <label class="btn" for="importFile" style="cursor:pointer;">Import</label>
                 <input id="importFile" type="file" accept="application/json" hidden />
               </div>
             </div>
@@ -1067,26 +1198,26 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       <div class="modal-body">
         <div class="form-grid">
           <div class="field">
-            <label id="labelAppName" for="appName">App-Name</label>
+            <label for="appName">App-Name</label>
             <input id="appName" name="appName" type="text" maxlength="80" required />
           </div>
           <div class="field">
-            <label id="labelAppUrl" for="appUrl">URL</label>
+            <label for="appUrl">URL</label>
             <input id="appUrl" name="appUrl" type="url" placeholder="https://..." required />
           </div>
           <div class="field">
-            <label id="labelAppDescription" for="appDescription">Beschreibung</label>
+            <label for="appDescription">Beschreibung</label>
             <textarea id="appDescription" name="appDescription" maxlength="240" placeholder="Kurze Beschreibung..."></textarea>
           </div>
           <div class="field">
-            <label id="labelAppCategory" for="appCategory">Kategorie</label>
+            <label for="appCategory">Kategorie</label>
             <input id="appCategory" name="appCategory" type="text" maxlength="60" list="categoryOptions" placeholder="z. B. Smart Home" />
             <datalist id="categoryOptions"></datalist>
           </div>
           <div class="field">
-            <label id="labelAppImage" for="appImage">Logo / Bild</label>
+            <label for="appImage">Logo / Bild</label>
             <input id="appImage" name="appImage" type="file" accept="image/*" />
-            <p class="hint" id="imageHint">Logos werden beim Hochladen automatisch auf transparente Ränder geprüft, damit sie größer und einheitlicher wirken.</p>
+            <p class="hint">Logos werden beim Hochladen automatisch auf transparente Ränder geprüft, damit sie größer und einheitlicher wirken.</p>
           </div>
           <div class="modal-preview" id="modalPreview"></div>
         </div>
@@ -1116,8 +1247,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
 
     let apps = [];
     let settings = { ...DEFAULT_SETTINGS };
-    let availableLanguages = [];
-    let translations = {};
+    let urlCategoryOverride = (() => {
+      const raw = new URLSearchParams(window.location.search).get('category') || '';
+      const cleaned = raw.trim();
+      return cleaned.length <= 120 ? cleaned : '';
+    })();
+    let searchQuery = '';
+    let suggestedImage = '';
+    let faviconLookupTimer = null;
     let currentPage = 0;
     let editingId = null;
     let pendingImage = null;
@@ -1132,9 +1269,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     const nextPageBtn = document.getElementById('nextPage');
     const appDialog = document.getElementById('appDialog');
     const appForm = document.getElementById('appForm');
+    const searchInput = document.getElementById('searchInput');
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsPanel = document.getElementById('settingsPanel');
-    const languageSelect = document.getElementById('languageSelect');
     const categoryFilter = document.getElementById('categoryFilter');
     const customGridInputs = document.getElementById('customGridInputs');
     const customCols = document.getElementById('customCols');
@@ -1155,10 +1292,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     const cancelBtn = document.getElementById('cancelBtn');
     const removeImageBtn = document.getElementById('removeImageBtn');
     const exportBtn = document.getElementById('exportBtn');
-    const importLabel = document.getElementById('importLabel');
     const importFile = document.getElementById('importFile');
     const categoryOptions = document.getElementById('categoryOptions');
-    const saveBtn = document.getElementById('saveBtn');
 
     settingsPanel.hidden = true;
 
@@ -1194,7 +1329,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       next.cols = clampInt(next.cols, DEFAULT_SETTINGS.cols);
       next.selectedCategory = String(next.selectedCategory || 'all');
       next.theme = next.theme === 'dark' ? 'dark' : 'light';
-      next.language = String(next.language || 'de');
 
       if (next.viewMode === '4x3') {
         next.rows = 3;
@@ -1207,94 +1341,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       return next;
     }
 
-    function t(key, vars = {}) {
-      let value = translations[key] || key;
-      Object.entries(vars).forEach(([name, replacement]) => {
-        value = value.replaceAll(`{${name}}`, String(replacement));
-      });
-      return value;
-    }
-
-    async function loadLanguage(code) {
-      try {
-        const response = await fetch(`${API_URL.replace('api=apps', 'api=lang')}&code=${encodeURIComponent(code)}`, { cache: 'no-store' });
-        const data = await response.json();
-        if (response.ok && data.ok && data.pack) {
-          translations = data.pack;
-        }
-      } catch (error) {
-        console.error(error);
-      }
-
-      applyTranslations();
-    }
-
-    function applyTranslations() {
-      const brandTitle = document.getElementById('brandTitle');
-      const appsTitle = document.getElementById('appsTitle');
-      const settingsLabelLanguage = document.getElementById('settingsLabelLanguage');
-      const settingsLabelCategory = document.getElementById('settingsLabelCategory');
-      const settingsLabelGrid = document.getElementById('settingsLabelGrid');
-      const settingsLabelDesign = document.getElementById('settingsLabelDesign');
-      const settingsLabelActions = document.getElementById('settingsLabelActions');
-      const settingsLabelConfig = document.getElementById('settingsLabelConfig');
-      const labelAppName = document.getElementById('labelAppName');
-      const labelAppUrl = document.getElementById('labelAppUrl');
-      const labelAppDescription = document.getElementById('labelAppDescription');
-      const labelAppCategory = document.getElementById('labelAppCategory');
-      const labelAppImage = document.getElementById('labelAppImage');
-      const imageHint = document.getElementById('imageHint');
-
-      brandTitle.textContent = t('brand');
-      appsTitle.textContent = t('apps');
-      settingsBtn.title = t('settings');
-      settingsBtn.setAttribute('aria-label', t('settings'));
-
-      settingsLabelLanguage.textContent = t('settings_language');
-      settingsLabelCategory.textContent = t('settings_category');
-      settingsLabelGrid.textContent = t('settings_grid');
-      settingsLabelDesign.textContent = t('settings_design');
-      settingsLabelActions.textContent = t('settings_actions');
-      settingsLabelConfig.textContent = t('settings_configuration');
-
-      editModeBtn.textContent = editMode ? t('done') : t('edit');
-      addBtn.textContent = t('new_app');
-      exportBtn.textContent = t('export');
-      importLabel.textContent = t('import');
-
-      prevPageBtn.textContent = t('prev');
-      nextPageBtn.textContent = t('next');
-
-      lightModeBtn.title = t('light');
-      lightModeBtn.setAttribute('aria-label', t('light'));
-      darkModeBtn.title = t('dark');
-      darkModeBtn.setAttribute('aria-label', t('dark'));
-
-      labelAppName.textContent = t('field_name');
-      labelAppUrl.textContent = t('field_url');
-      labelAppDescription.textContent = t('field_description');
-      labelAppCategory.textContent = t('field_category');
-      labelAppImage.textContent = t('field_image');
-      imageHint.textContent = t('image_hint');
-
-      saveBtn.textContent = t('save');
-      cancelBtn.textContent = t('cancel');
-      removeImageBtn.textContent = t('remove_image');
-      cloneBtn.textContent = t('clone');
-      deleteBtn.textContent = t('delete');
-
-      if (appDialog.open) {
-        if (editingId) {
-          dialogTitle.textContent = t('dialog_edit');
-        } else if (!editingId && cloneSourceId === null && pendingImage && !keepExistingImage) {
-          // keep current dialog title if clone mode is already set elsewhere
-        }
-      }
-
-      updateCategoryControls();
-      render();
-    }
-
     function getCategories() {
       return [...new Set(
         apps
@@ -1304,16 +1350,33 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     }
 
     function getSelectedCategory() {
-      return settings.selectedCategory || 'all';
+      return urlCategoryOverride || settings.selectedCategory || 'all';
     }
 
     function getFilteredApps() {
       const selected = getSelectedCategory();
-      if (selected === 'all') return apps;
+      let filtered = apps;
+
       if (selected === '__uncategorized__') {
-        return apps.filter((entry) => !(entry.category || '').trim());
+        filtered = filtered.filter((entry) => !(entry.category || '').trim());
+      } else if (selected !== 'all') {
+        filtered = filtered.filter((entry) => (entry.category || '').trim() === selected);
       }
-      return apps.filter((entry) => (entry.category || '').trim() === selected);
+
+      const needle = searchQuery.trim().toLowerCase();
+      if (!needle) {
+        return filtered;
+      }
+
+      return filtered.filter((entry) => {
+        const haystack = [
+          entry.name || '',
+          entry.description || '',
+          entry.category || ''
+        ].join(' ').toLowerCase();
+
+        return haystack.includes(needle);
+      });
     }
 
     function getTilesPerPage() {
@@ -1341,12 +1404,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       const hasUncategorized = apps.some((entry) => !(entry.category || '').trim());
 
       const options = [
-        { value: 'all', label: t('all_categories') },
+        { value: 'all', label: 'Alle Kategorien' },
         ...categories.map((category) => ({ value: category, label: category })),
       ];
 
       if (hasUncategorized) {
-        options.push({ value: '__uncategorized__', label: t('uncategorized') });
+        options.push({ value: '__uncategorized__', label: 'Ohne Kategorie' });
       }
 
       categoryFilter.innerHTML = options
@@ -1354,17 +1417,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         .join('');
 
       const validValues = new Set(options.map((option) => option.value));
-      settings.selectedCategory = validValues.has(settings.selectedCategory) ? settings.selectedCategory : 'all';
-      categoryFilter.value = settings.selectedCategory;
+
+      if (urlCategoryOverride && validValues.has(urlCategoryOverride)) {
+        categoryFilter.value = urlCategoryOverride;
+      } else {
+        urlCategoryOverride = '';
+        settings.selectedCategory = validValues.has(settings.selectedCategory) ? settings.selectedCategory : 'all';
+        categoryFilter.value = settings.selectedCategory;
+      }
 
       categoryOptions.innerHTML = categories
         .map((category) => `<option value="${escapeAttribute(category)}"></option>`)
         .join('');
-
-      languageSelect.innerHTML = availableLanguages
-        .map((entry) => `<option value="${escapeAttribute(entry.code)}">${escapeHtml(entry.label)}</option>`)
-        .join('');
-      languageSelect.value = settings.language || 'de';
     }
 
     async function loadApps() {
@@ -1374,21 +1438,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         if (!response.ok || !data.ok) throw new Error(data.error || 'Apps konnten nicht geladen werden.');
         apps = normalizeApps(data.apps);
         settings = normalizeSettings(data.settings);
-        availableLanguages = Array.isArray(data.availableLanguages) ? data.availableLanguages : [];
         applyThemeSettings();
         applyGridSettings();
         updateCategoryControls();
-        await loadLanguage(settings.language || 'de');
         render();
       } catch (error) {
         console.error(error);
         apps = [];
         settings = normalizeSettings(DEFAULT_SETTINGS);
-        availableLanguages = [{ code: 'de', label: 'Deutsch' }, { code: 'en', label: 'English' }];
         applyThemeSettings();
         applyGridSettings();
         updateCategoryControls();
-        await loadLanguage(settings.language || 'de');
         render();
       }
     }
@@ -1406,11 +1466,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
       apps = normalizeApps(data.apps);
       settings = normalizeSettings(data.settings);
-      availableLanguages = Array.isArray(data.availableLanguages) ? data.availableLanguages : availableLanguages;
       applyThemeSettings();
       applyGridSettings();
       updateCategoryControls();
-      await loadLanguage(settings.language || 'de');
       render();
     }
 
@@ -1427,7 +1485,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       editMode = enabled;
       document.body.classList.toggle('edit-mode', editMode);
       editModeBtn.classList.toggle('active', editMode);
-      editModeBtn.textContent = editMode ? t('done') : t('edit');
+      editModeBtn.textContent = editMode ? 'Fertig' : 'Bearbeiten';
       render();
     }
 
@@ -1452,14 +1510,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     }
 
     function createLogoMarkup(app) {
+      const initial = escapeHtml(getInitial(app.name));
+
       if (app.image) {
         return `
           <div class="tile-logo-stage">
-            <img class="tile-logo" src="${escapeHtml(app.image)}" alt="${escapeHtml(app.name)}" />
+            <img
+              class="tile-logo"
+              src="${escapeHtml(app.image)}"
+              alt="${escapeHtml(app.name)}"
+              onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';"
+            />
+            <div class="tile-logo placeholder" aria-hidden="true" style="display:none;">${initial}</div>
           </div>
         `;
       }
-      return `<div class="tile-logo placeholder" aria-hidden="true">${escapeHtml(getInitial(app.name))}</div>`;
+
+      return `<div class="tile-logo placeholder" aria-hidden="true">${initial}</div>`;
     }
 
     function render() {
@@ -1490,7 +1557,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             <div class="tile-info">
               <div class="tile-text-stack">
                 <h3 class="tile-title">${escapeHtml(app.name)}</h3>
-                <p class="tile-desc">${escapeHtml(app.description || t('no_description'))}</p>
+                <p class="tile-desc">${escapeHtml(app.description || 'Keine Beschreibung hinterlegt.')}</p>
               </div>
             </div>
           </a>
@@ -1547,7 +1614,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         grid.appendChild(tile);
       }
 
-      pageIndicator.textContent = t('page_of', { current: currentPage + 1, total: pages });
+      pageIndicator.textContent = `Seite ${currentPage + 1} / ${pages}`;
       prevPageBtn.disabled = currentPage === 0;
       nextPageBtn.disabled = currentPage >= pages - 1;
 
@@ -1579,15 +1646,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     function openCreateDialog() {
       editingId = null;
       pendingImage = null;
+      suggestedImage = '';
       keepExistingImage = false;
-      dialogTitle.textContent = t('dialog_create');
+      dialogTitle.textContent = 'App anlegen';
       deleteBtn.style.display = 'none';
       cloneBtn.style.display = 'none';
       cloneSourceId = null;
       appForm.reset();
       const selectedCategory = getSelectedCategory();
       appCategory.value = (selectedCategory !== 'all' && selectedCategory !== '__uncategorized__') ? selectedCategory : '';
-      renderModalPreview('', '');
+      updateModalPreview();
       appDialog.showModal();
       appName.focus();
     }
@@ -1598,8 +1666,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
 
       editingId = id;
       pendingImage = null;
+      suggestedImage = '';
       keepExistingImage = true;
-      dialogTitle.textContent = t('dialog_edit');
+      dialogTitle.textContent = 'App bearbeiten';
       deleteBtn.style.display = 'inline-flex';
       cloneBtn.style.display = 'inline-flex';
       cloneSourceId = id;
@@ -1608,7 +1677,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       appDescription.value = app.description || '';
       appCategory.value = app.category || '';
       appImage.value = '';
-      renderModalPreview(app.image, app.name);
+      updateModalPreview();
       appDialog.showModal();
       appName.focus();
     }
@@ -1618,6 +1687,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       appForm.reset();
       editingId = null;
       pendingImage = null;
+      suggestedImage = '';
       keepExistingImage = true;
       cloneSourceId = null;
     }
@@ -1625,7 +1695,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     async function removeApp(id) {
       const app = apps.find((entry) => entry.id === id);
       if (!app) return;
-      const ok = confirm(t('confirm_delete', { name: app.name }));
+      const ok = confirm(`„${app.name}“ wirklich löschen?`);
       if (!ok) return;
       apps = apps.filter((entry) => entry.id !== id);
       try {
@@ -1698,11 +1768,51 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       });
     }
 
+    async function lookupSuggestedLogo(url) {
+      const trimmed = String(url || '').trim();
+      if (!trimmed || !/^https?:\/\//i.test(trimmed)) {
+        suggestedImage = '';
+        updateModalPreview();
+        return;
+      }
+
+      try {
+        const endpoint = `${API_URL.replace('api=apps', 'api=favicon')}&url=${encodeURIComponent(trimmed)}`;
+        const response = await fetch(endpoint, { cache: 'no-store' });
+        const data = await response.json();
+
+        suggestedImage = data.ok ? String(data.image || '') : '';
+      } catch (error) {
+        console.error(error);
+        suggestedImage = '';
+      }
+
+      updateModalPreview();
+    }
+
+    function updateModalPreview() {
+      const existingImage = editingId && keepExistingImage ? apps.find((entry) => entry.id === editingId)?.image || '' : '';
+      const imageToPreview = pendingImage || existingImage || suggestedImage || '';
+      renderModalPreview(imageToPreview, appName.value);
+    }
+
     function renderModalPreview(image, name = '') {
+      const initial = escapeHtml(getInitial(name));
+
       if (image) {
-        modalPreview.innerHTML = `<img src="${escapeHtml(image)}" alt="${escapeHtml(name || 'Vorschau')}" />`;
+        modalPreview.innerHTML = `
+          <div class="tile-logo-stage">
+            <img
+              src="${escapeHtml(image)}"
+              alt="${escapeHtml(name || 'Vorschau')}"
+              style="max-width:76%; max-height:76%; object-fit:contain;"
+              onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';"
+            />
+            <div class="tile-logo placeholder" style="display:none;">${initial}</div>
+          </div>
+        `;
       } else {
-        modalPreview.innerHTML = `<div class="tile-logo placeholder">${escapeHtml(getInitial(name))}</div>`;
+        modalPreview.innerHTML = `<div class="tile-logo placeholder">${initial}</div>`;
       }
     }
 
@@ -1760,16 +1870,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
     });
 
-    languageSelect.addEventListener('change', async () => {
-      settings.language = languageSelect.value || 'de';
-      try {
-        await saveApps();
-      } catch (error) {
-        console.error(error);
-      }
-    });
-
     categoryFilter.addEventListener('change', async () => {
+      urlCategoryOverride = '';
       settings.selectedCategory = categoryFilter.value || 'all';
       currentPage = 0;
       render();
@@ -1818,6 +1920,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }, 0);
     });
 
+    searchInput.addEventListener('input', () => {
+      searchQuery = searchInput.value || '';
+      currentPage = 0;
+      render();
+    });
+
     prevPageBtn.addEventListener('click', () => {
       if (currentPage > 0) {
         currentPage -= 1;
@@ -1850,7 +1958,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       keepExistingImage = false;
       editingId = null;
       cloneSourceId = null;
-      dialogTitle.textContent = t('dialog_clone');
+      dialogTitle.textContent = 'Kachel klonen';
       deleteBtn.style.display = 'none';
       cloneBtn.style.display = 'none';
       appName.focus();
@@ -1861,12 +1969,21 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       pendingImage = null;
       keepExistingImage = false;
       appImage.value = '';
-      renderModalPreview('', appName.value);
+      updateModalPreview();
     });
 
     appName.addEventListener('input', () => {
-      const imageToPreview = pendingImage || (editingId && keepExistingImage ? apps.find((entry) => entry.id === editingId)?.image : '');
-      renderModalPreview(imageToPreview, appName.value);
+      updateModalPreview();
+    });
+
+    appUrl.addEventListener('input', () => {
+      clearTimeout(faviconLookupTimer);
+      faviconLookupTimer = setTimeout(() => {
+        if (pendingImage || (editingId && keepExistingImage)) {
+          return;
+        }
+        lookupSuggestedLogo(appUrl.value);
+      }, 350);
     });
 
     appImage.addEventListener('change', async () => {
@@ -1875,7 +1992,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       const raw = await fileToDataUrl(file);
       pendingImage = await trimTransparentPadding(raw);
       keepExistingImage = false;
-      renderModalPreview(pendingImage, appName.value);
+      updateModalPreview();
     });
 
     appForm.addEventListener('submit', async (event) => {
@@ -1893,6 +2010,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         image = pendingImage;
       } else if (editingId && keepExistingImage) {
         image = apps.find((entry) => entry.id === editingId)?.image || '';
+      } else if (suggestedImage) {
+        image = suggestedImage;
       }
 
       if (editingId) {
