@@ -73,7 +73,7 @@ http://YOURDOCKERHOST:19961
 ### Settings
 ![PenguLab Settings](screenshot02.png)
 
-## Requirements
+## Requirements (Self hosting no Docker)
 
 - PHP **8.1+**
 - A web server that can run PHP, for example:
