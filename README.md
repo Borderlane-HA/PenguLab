@@ -49,6 +49,10 @@ Strg X -> Y -> Enter
 docker compose up -d
 ```
 
+```bash
+http://YOURDOCKERHOST:19961
+```
+
 
 ## Screenshots
 
