@@ -23,7 +23,9 @@ It is built with plain PHP and JSON, requires no database, and provides a clean 
 ## IP Manager Addon
 
 Organize your networks, DHCP ranges, DNS servers, VLANs, reservations, and hosts in one clean view. The IP Manager addon helps you document subnets, keep track of assigned and free IP addresses, and quickly spot DHCP-related overlaps before they become a problem.
-
+```bash
+http://YOURDOCKERHOST:19961/index.php?addon=ipmanager
+```
 
 ## Docker
 
