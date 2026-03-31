@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 $dataFile = __DIR__ . '/apps.json';
 $langDir = __DIR__ . '/lang';
+$addonsDir = __DIR__ . '/addons';
 
 function send_json($data, int $status = 200): void {
     http_response_code($status);
@@ -48,6 +49,32 @@ function load_language_pack(string $langDir, string $code): array {
 
     return is_array($data) ? $data : ['_meta' => ['label' => 'Deutsch']];
 }
+
+function scan_addons(string $addonsDir): array {
+    $result = [];
+
+    if (!is_dir($addonsDir)) {
+        return [];
+    }
+
+    foreach (glob($addonsDir . '/*.php') ?: [] as $file) {
+        $slug = basename($file, '.php');
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $slug)) {
+            continue;
+        }
+
+        $label = ucwords(str_replace(['-', '_'], ' ', $slug));
+        $result[$slug] = [
+            'slug' => $slug,
+            'label' => $label,
+            'path' => $file,
+        ];
+    }
+
+    ksort($result, SORT_NATURAL | SORT_FLAG_CASE);
+    return $result;
+}
+
 
 
 function resolve_url(string $baseUrl, string $relativeUrl): string {
@@ -353,6 +380,30 @@ if (isset($_GET['api']) && $_GET['api'] === 'favicon') {
     send_json(detect_favicon($url));
 }
 
+if (isset($_GET['api']) && $_GET['api'] === 'export') {
+    $rawData = [];
+    if (file_exists($dataFile)) {
+        $json = @file_get_contents($dataFile);
+        $decoded = is_string($json) ? json_decode($json, true) : null;
+        if (is_array($decoded) && !array_is_list($decoded)) {
+            $rawData = $decoded;
+        }
+    }
+
+    if (!$rawData) {
+        $payload = read_data($dataFile);
+        $rawData = [
+            'settings' => $payload['settings'],
+            'apps' => $payload['apps'],
+        ];
+    }
+
+    send_json([
+        'ok' => true,
+        'data' => $rawData,
+    ]);
+}
+
 if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $payload = read_data($dataFile);
@@ -375,8 +426,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         $availableLanguages = scan_languages($langDir);
         $apps = sanitize_apps($decoded['apps']);
         $settings = sanitize_settings(is_array($decoded['settings'] ?? null) ? $decoded['settings'] : [], $availableLanguages);
+
+        $fullRaw = [];
+        if (is_array($decoded) && !array_is_list($decoded)) {
+            $fullRaw = $decoded;
+        } elseif (file_exists($dataFile)) {
+            $existingJson = @file_get_contents($dataFile);
+            $existingDecoded = is_string($existingJson) ? json_decode($existingJson, true) : null;
+            if (is_array($existingDecoded) && !array_is_list($existingDecoded)) {
+                $fullRaw = $existingDecoded;
+            }
+        }
+
+        $fullRaw['settings'] = $settings;
+        $fullRaw['apps'] = $apps;
+
         $json = json_encode(
-            ['settings' => $settings, 'apps' => $apps],
+            $fullRaw,
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
         );
 
@@ -395,12 +461,30 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     send_json(['ok' => false, 'error' => 'Methode nicht erlaubt.'], 405);
 }
 
+$availableAddons = scan_addons($addonsDir);
+$currentAddonSlug = trim((string)($_GET['addon'] ?? ''));
+$currentAddon = null;
+$addonOutput = '';
+
+if ($currentAddonSlug !== '' && isset($availableAddons[$currentAddonSlug])) {
+    $currentAddon = $availableAddons[$currentAddonSlug];
+    $penguLabContext = [
+        'addon' => $currentAddon,
+        'addons' => $availableAddons,
+    ];
+
+    ob_start();
+    include $currentAddon['path'];
+    $addonOutput = (string)ob_get_clean();
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="favicon.png">
   <title>PenguLab</title>
   <style>
     :root {
@@ -625,6 +709,115 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       flex-wrap: wrap;
     }
 
+    .apps-menu-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .apps-menu-details {
+      position: relative;
+    }
+
+    .apps-menu-details summary {
+      list-style: none;
+    }
+
+    .apps-menu-details summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .apps-menu-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .apps-home-link {
+      text-decoration: none;
+      color: inherit;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .apps-menu-toggle {
+      appearance: none;
+      border: 1px solid var(--control-border);
+      background: var(--control-bg);
+      padding: 0;
+      width: 38px;
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text);
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(16, 35, 73, 0.04);
+      position: relative;
+      z-index: 3;
+      flex: 0 0 auto;
+    }
+
+    .apps-menu-toggle:hover {
+      background: rgba(123, 163, 255, 0.10);
+      border-color: rgba(123, 163, 255, 0.25);
+      color: var(--text);
+    }
+
+    .apps-menu-chevron {
+      font-size: 1rem;
+      line-height: 1;
+      color: currentColor;
+      transform: translateY(-1px);
+      pointer-events: none;
+    }
+
+    .apps-menu {
+      position: absolute;
+      top: calc(100% + 12px);
+      left: 0;
+      min-width: 220px;
+      padding: 8px;
+      border-radius: 18px;
+      border: 1px solid var(--control-border);
+      background: var(--panel-bg);
+      box-shadow: 0 18px 40px rgba(16, 35, 73, 0.14);
+      display: none;
+      gap: 6px;
+      z-index: 40;
+      backdrop-filter: blur(14px);
+    }
+
+    .apps-menu-details[open] .apps-menu {
+      display: grid;
+    }
+
+    .apps-menu-item {
+      display: block;
+      text-decoration: none;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-weight: 700;
+    }
+
+    .apps-menu-item:hover,
+    .apps-menu-item.active {
+      background: rgba(123, 163, 255, 0.10);
+    }
+
+    .addon-shell {
+      width: min(100%, var(--container-max));
+      margin: 0 auto;
+      min-height: calc(100vh - var(--toolbar-height) - 180px);
+      border-radius: 28px;
+      border: 1px solid var(--card-border);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+
     .settings-wrap {
       position: relative;
       margin-left: auto;
@@ -698,17 +891,54 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       min-width: 220px;
     }
 
-    .search-input {
+    .search-wrap {
+      position: relative;
       width: min(100%, 560px);
+    }
+
+    .search-input {
+      width: 100%;
       border: 1px solid var(--control-border);
       background: var(--control-bg);
       color: var(--text);
       border-radius: 18px;
-      padding: 12px 18px;
+      padding: 12px 50px 12px 18px;
       font: inherit;
       font-weight: 600;
       box-shadow: 0 4px 14px rgba(16, 35, 73, 0.05);
       outline: none;
+      text-align: left;
+    }
+
+    .search-clear-btn {
+      position: absolute;
+      top: 50%;
+      right: 10px;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 32px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    }
+
+    .search-wrap.has-value .search-clear-btn {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .search-clear-btn:hover {
+      color: var(--text);
+      background: rgba(123, 163, 255, 0.10);
+      border-color: rgba(123, 163, 255, 0.18);
     }
 
     .search-input::placeholder {
@@ -1182,7 +1412,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     }
   </style>
 </head>
-<body>
+<body class="<?php echo $currentAddon ? 'addon-view' : 'home-view'; ?>">
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark"></div>
@@ -1194,10 +1424,35 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
   <main class="page">
     <section class="page-header">
       <div class="page-header-bar">
-        <h1 class="page-title" id="appsTitle">Apps</h1>
-        <div class="page-header-center">
-          <input class="search-input" id="searchInput" type="text" aria-label="Search apps" />
+        <div class="apps-menu-wrap">
+          <div class="apps-menu-trigger">
+            <a class="apps-home-link" href="<?php echo htmlspecialchars(basename(__FILE__), ENT_QUOTES, 'UTF-8'); ?>">
+              <h1 class="page-title" id="appsTitle">Apps</h1>
+            </a>
+            <details class="apps-menu-details">
+              <summary class="apps-menu-toggle" aria-label="Apps Menü">
+                <span class="apps-menu-chevron">▾</span>
+              </summary>
+              <div class="apps-menu">
+                <a class="apps-menu-item<?php echo $currentAddon ? '' : ' active'; ?>" href="<?php echo htmlspecialchars(basename(__FILE__), ENT_QUOTES, 'UTF-8'); ?>">PenguLab Home</a>
+                <?php foreach ($availableAddons as $addon): ?>
+                  <a class="apps-menu-item<?php echo ($currentAddon && $currentAddon['slug'] === $addon['slug']) ? ' active' : ''; ?>" href="<?php echo htmlspecialchars(basename(__FILE__), ENT_QUOTES, 'UTF-8'); ?>?addon=<?php echo rawurlencode($addon['slug']); ?>"><?php echo htmlspecialchars($addon['label'], ENT_QUOTES, 'UTF-8'); ?></a>
+                <?php endforeach; ?>
+              </div>
+            </details>
+          </div>
         </div>
+        <?php if (!$currentAddon): ?>
+        <div class="page-header-center">
+          <div class="search-wrap">
+            <input class="search-input" id="searchInput" type="text" aria-label="Search apps" />
+            <button class="search-clear-btn" id="clearSearchBtn" type="button" aria-label="Suche löschen" title="Suche löschen">×</button>
+          </div>
+        </div>
+        <?php else: ?>
+        <div class="page-header-center"></div>
+        <?php endif; ?>
+        <?php if (!($currentAddon && $currentAddon['slug'] === 'ipmanager')): ?>
         <div class="settings-wrap">
           <button class="settings-btn" id="settingsBtn" type="button" aria-label="Einstellungen">⚙</button>
           <div class="settings-panel" id="settingsPanel" hidden>
@@ -1241,9 +1496,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
             </div>
           </div>
         </div>
+        </div>
+        <?php endif; ?>
       </div>
     </section>
 
+    <?php if (!$currentAddon): ?>
     <section class="grid-wrap">
       <div class="grid" id="grid"></div>
     </section>
@@ -1253,6 +1511,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       <div class="page-indicator" id="pageIndicator">Seite 1 / 1</div>
       <button class="btn" id="nextPage" type="button">Weiter →</button>
     </section>
+    <?php else: ?>
+    <section class="addon-shell">
+      <?php echo $addonOutput; ?>
+    </section>
+    <?php endif; ?>
   </main>
 
   <dialog id="appDialog">
@@ -1337,7 +1600,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     const nextPageBtn = document.getElementById('nextPage');
     const appDialog = document.getElementById('appDialog');
     const appForm = document.getElementById('appForm');
+    const appsMenuTrigger = null;
+    const appsMenu = null;
     const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsPanel = document.getElementById('settingsPanel');
     const languageSelect = document.getElementById('languageSelect');
@@ -1364,7 +1630,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     const importFile = document.getElementById('importFile');
     const categoryOptions = document.getElementById('categoryOptions');
 
-    settingsPanel.hidden = true;
+    if (settingsPanel) settingsPanel.hidden = true;
 
     function normalizeApps(input) {
       if (!Array.isArray(input)) return [];
@@ -1438,6 +1704,38 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
     }
 
+    function applyModalTranslations() {
+      const setText = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value;
+      };
+
+      setText('labelAppName', t('field_name'));
+      setText('labelAppUrl', t('field_url'));
+      setText('labelAppDescription', t('field_description'));
+      setText('labelAppCategory', t('field_category'));
+      setText('labelAppImage', t('field_image'));
+      setText('imageHint', t('image_hint'));
+
+      if (appUrl) appUrl.placeholder = t('field_url_placeholder');
+      if (appDescription) appDescription.placeholder = t('field_description_placeholder');
+      if (appCategory) appCategory.placeholder = t('field_category_placeholder');
+
+      if (saveBtn) saveBtn.textContent = t('save');
+      if (cancelBtn) cancelBtn.textContent = t('cancel');
+      if (removeImageBtn) removeImageBtn.textContent = t('remove_image');
+      if (cloneBtn) cloneBtn.textContent = t('clone');
+      if (deleteBtn) deleteBtn.textContent = t('delete');
+
+      if (appDialog && appDialog.open) {
+        if (editingId) {
+          dialogTitle.textContent = t('dialog_edit');
+        } else {
+          dialogTitle.textContent = t('dialog_create');
+        }
+      }
+    }
+
     function applyTranslations() {
       const setText = (id, value) => {
         const element = document.getElementById(id);
@@ -1473,19 +1771,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         darkModeBtn.title = t('dark');
         darkModeBtn.setAttribute('aria-label', t('dark'));
       }
+      if (clearSearchBtn) {
+        clearSearchBtn.title = t('clear_search');
+        clearSearchBtn.setAttribute('aria-label', t('clear_search'));
+      }
 
-      setText('labelAppName', t('field_name'));
-      setText('labelAppUrl', t('field_url'));
-      setText('labelAppDescription', t('field_description'));
-      setText('labelAppCategory', t('field_category'));
-      setText('labelAppImage', t('field_image'));
-      setText('imageHint', t('image_hint'));
-
-      if (saveBtn) saveBtn.textContent = t('save');
-      if (cancelBtn) cancelBtn.textContent = t('cancel');
-      if (removeImageBtn) removeImageBtn.textContent = t('remove_image');
-      if (cloneBtn) cloneBtn.textContent = t('clone');
-      if (deleteBtn) deleteBtn.textContent = t('delete');
+      applyModalTranslations();
+      updateCategoryControls();
+      updateModalPreview();
+      render();
     }
 
     function getCategories() {
@@ -1532,18 +1826,19 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
 
     function applyThemeSettings() {
       document.body.dataset.theme = settings.theme === 'dark' ? 'dark' : 'light';
-      lightModeBtn.classList.toggle('active', settings.theme !== 'dark');
-      darkModeBtn.classList.toggle('active', settings.theme === 'dark');
+      if (lightModeBtn) lightModeBtn.classList.toggle('active', settings.theme !== 'dark');
+      if (darkModeBtn) darkModeBtn.classList.toggle('active', settings.theme === 'dark');
     }
 
     function applyGridSettings() {
       settings = normalizeSettings(settings);
-      grid.style.setProperty('--grid-cols', String(settings.cols));
-      grid.style.setProperty('--grid-rows', String(settings.rows));
-
-      customCols.value = String(settings.cols);
-      customRows.value = String(settings.rows);
-      customGridInputs.classList.add('active');
+      if (grid) {
+        grid.style.setProperty('--grid-cols', String(settings.cols));
+        grid.style.setProperty('--grid-rows', String(settings.rows));
+      }
+      if (customCols) customCols.value = String(settings.cols);
+      if (customRows) customRows.value = String(settings.rows);
+      if (customGridInputs) customGridInputs.classList.add('active');
     }
 
     function updateCategoryControls() {
@@ -1559,28 +1854,32 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         options.push({ value: '__uncategorized__', label: t('uncategorized') });
       }
 
-      categoryFilter.innerHTML = options
-        .map((option) => `<option value="${escapeAttribute(option.value)}">${escapeHtml(option.label)}</option>`)
-        .join('');
+      if (categoryFilter) {
+        categoryFilter.innerHTML = options
+          .map((option) => `<option value="${escapeAttribute(option.value)}">${escapeHtml(option.label)}</option>`)
+          .join('');
 
-      const validValues = new Set(options.map((option) => option.value));
+        const validValues = new Set(options.map((option) => option.value));
 
-      if (urlCategoryOverride && validValues.has(urlCategoryOverride)) {
-        categoryFilter.value = urlCategoryOverride;
-      } else {
-        urlCategoryOverride = '';
-        settings.selectedCategory = validValues.has(settings.selectedCategory) ? settings.selectedCategory : 'all';
-        categoryFilter.value = settings.selectedCategory;
+        if (urlCategoryOverride && validValues.has(urlCategoryOverride)) {
+          categoryFilter.value = urlCategoryOverride;
+        } else {
+          urlCategoryOverride = '';
+          settings.selectedCategory = validValues.has(settings.selectedCategory) ? settings.selectedCategory : 'all';
+          categoryFilter.value = settings.selectedCategory;
+        }
       }
 
       categoryOptions.innerHTML = categories
         .map((category) => `<option value="${escapeAttribute(category)}"></option>`)
         .join('');
 
-      languageSelect.innerHTML = availableLanguages
-        .map((entry) => `<option value="${escapeAttribute(entry.code)}">${escapeHtml(entry.label)}</option>`)
-        .join('');
-      languageSelect.value = settings.language || 'de';
+      if (languageSelect) {
+        languageSelect.innerHTML = availableLanguages
+          .map((entry) => `<option value="${escapeAttribute(entry.code)}">${escapeHtml(entry.label)}</option>`)
+          .join('');
+        languageSelect.value = settings.language || 'de';
+      }
     }
 
     async function loadApps() {
@@ -1688,6 +1987,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
     }
 
     function render() {
+      if (!grid || !pageIndicator || !prevPageBtn || !nextPageBtn) return;
+
       const pages = totalPages();
       if (currentPage >= pages) currentPage = pages - 1;
 
@@ -1773,6 +2074,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
 
       pageIndicator.textContent = t('page_of', { current: currentPage + 1, total: pages });
+      prevPageBtn.textContent = t('prev');
+      nextPageBtn.textContent = t('next');
       prevPageBtn.disabled = currentPage === 0;
       nextPageBtn.disabled = currentPage >= pages - 1;
 
@@ -1813,6 +2116,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       appForm.reset();
       const selectedCategory = getSelectedCategory();
       appCategory.value = (selectedCategory !== 'all' && selectedCategory !== '__uncategorized__') ? selectedCategory : '';
+      applyModalTranslations();
       updateModalPreview();
       appDialog.showModal();
       appName.focus();
@@ -1835,6 +2139,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       appDescription.value = app.description || '';
       appCategory.value = app.category || '';
       appImage.value = '';
+      applyModalTranslations();
       updateModalPreview();
       appDialog.showModal();
       appName.focus();
@@ -2000,7 +2305,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
 
     document.addEventListener('click', (event) => {
       if (!settingsWrapContains(event.target)) {
-        settingsPanel.hidden = true;
+        if (settingsPanel) settingsPanel.hidden = true;
+      }
+      if (appsMenu && appsMenuTrigger && !appsMenu.contains(event.target) && !appsMenuTrigger.contains(event.target)) {
+        appsMenu.hidden = true;
       }
     });
 
@@ -2028,31 +2336,35 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
     });
 
-    languageSelect.addEventListener('change', async () => {
-      settings.language = languageSelect.value || 'de';
-      try {
-        await saveApps();
-      } catch (error) {
-        console.error(error);
-      }
-    });
+    if (languageSelect) {
+      languageSelect.addEventListener('change', async () => {
+        settings.language = languageSelect.value || 'de';
+        try {
+          await saveApps();
+        } catch (error) {
+          console.error(error);
+        }
+      });
+    }
 
-    categoryFilter.addEventListener('change', async () => {
-      urlCategoryOverride = '';
-      settings.selectedCategory = categoryFilter.value || 'all';
-      currentPage = 0;
-      render();
-      try {
-        await saveApps();
-      } catch (error) {
-        console.error(error);
-      }
-    });
+    if (categoryFilter) {
+      categoryFilter.addEventListener('change', async () => {
+        urlCategoryOverride = '';
+        settings.selectedCategory = categoryFilter.value || 'all';
+        currentPage = 0;
+        render();
+        try {
+          await saveApps();
+        } catch (error) {
+          console.error(error);
+        }
+      });
+    }
 
     async function saveCustomGridSettings() {
       settings.viewMode = 'custom';
-      settings.cols = clampInt(customCols.value, settings.cols || 5);
-      settings.rows = clampInt(customRows.value, settings.rows || 3);
+      settings.cols = clampInt(customCols ? customCols.value : settings.cols, settings.cols || 5);
+      settings.rows = clampInt(customRows ? customRows.value : settings.rows, settings.rows || 3);
       currentPage = 0;
       applyGridSettings();
       render();
@@ -2063,7 +2375,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
     }
 
-    [customCols, customRows].forEach((input) => {
+    [customCols, customRows].filter(Boolean).forEach((input) => {
       input.addEventListener('focus', () => {
         settings.viewMode = 'custom';
       });
@@ -2079,19 +2391,40 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       });
     });
 
-    customGridInputs.addEventListener('focusout', () => {
-      setTimeout(() => {
-        if (!customGridInputs.contains(document.activeElement)) {
-          saveCustomGridSettings();
-        }
-      }, 0);
-    });
+    if (customGridInputs) {
+      customGridInputs.addEventListener('focusout', () => {
+        setTimeout(() => {
+          if (!customGridInputs.contains(document.activeElement)) {
+            saveCustomGridSettings();
+          }
+        }, 0);
+      });
+    }
 
-    searchInput.addEventListener('input', () => {
+    function updateSearchState() {
+      if (!searchInput) return;
       searchQuery = searchInput.value || '';
-      currentPage = 0;
-      render();
-    });
+      searchInput.parentElement.classList.toggle('has-value', searchQuery.trim().length > 0);
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        updateSearchState();
+        currentPage = 0;
+        render();
+      });
+    }
+
+    if (clearSearchBtn) {
+      clearSearchBtn.addEventListener('click', () => {
+        if (!searchInput) return;
+        searchInput.value = '';
+        updateSearchState();
+        currentPage = 0;
+        render();
+        searchInput.focus();
+      });
+    }
 
     prevPageBtn.addEventListener('click', () => {
       if (currentPage > 0) {
@@ -2125,6 +2458,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       keepExistingImage = false;
       editingId = null;
       cloneSourceId = null;
+      applyModalTranslations();
       dialogTitle.textContent = t('dialog_clone');
       deleteBtn.style.display = 'none';
       cloneBtn.style.display = 'none';
@@ -2206,31 +2540,59 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
       }
     });
 
-    exportBtn.addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify({ settings, apps }, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'pengulab-apps.json';
-      a.click();
-      URL.revokeObjectURL(url);
+    if (exportBtn) exportBtn.addEventListener('click', async () => {
+      try {
+        const response = await fetch(API_URL.replace('api=apps', 'api=export'), { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || 'Export fehlgeschlagen.');
+        }
+
+        const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'pengulab-apps.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error(error);
+      }
     });
 
-    importFile.addEventListener('change', async () => {
+    if (importFile) importFile.addEventListener('change', async () => {
       const file = importFile.files?.[0];
       if (!file) return;
       try {
         const text = await file.text();
         const parsed = JSON.parse(text);
-        if (Array.isArray(parsed)) {
-          apps = normalizeApps(parsed);
-          settings = normalizeSettings(DEFAULT_SETTINGS);
-        } else {
-          apps = normalizeApps(parsed.apps);
-          settings = normalizeSettings(parsed.settings);
-        }
+        const fullImport = Array.isArray(parsed)
+          ? { settings: DEFAULT_SETTINGS, apps: parsed }
+          : parsed;
+
+        apps = normalizeApps(fullImport.apps);
+        settings = normalizeSettings(fullImport.settings);
         currentPage = 0;
-        await saveApps();
+
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fullImport)
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || 'Import fehlgeschlagen.');
+        }
+
+        apps = normalizeApps(data.apps);
+        settings = normalizeSettings(data.settings);
+        availableLanguages = Array.isArray(data.availableLanguages) ? data.availableLanguages : availableLanguages;
+        applyThemeSettings();
+        applyGridSettings();
+        updateCategoryControls();
+        await loadLanguage(settings.language || 'de');
+        render();
       } catch (error) {
         console.error(error);
       } finally {
@@ -2243,10 +2605,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'apps') {
         if (appDialog.open) {
           closeDialog();
         }
-        settingsPanel.hidden = true;
+        if (settingsPanel) settingsPanel.hidden = true;
       }
     });
 
+    updateSearchState();
     loadApps();
   </script>
 </body>

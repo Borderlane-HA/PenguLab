@@ -23,8 +23,11 @@
   "dialog_clone": "Kachel klonen",
   "field_name": "App-Name",
   "field_url": "URL",
+  "field_url_placeholder": "https://...",
   "field_description": "Beschreibung",
+  "field_description_placeholder": "Kurze Beschreibung...",
   "field_category": "Kategorie",
+  "field_category_placeholder": "z. B. Smart Home",
   "field_image": "Logo / Bild",
   "image_hint": "Logos werden beim Hochladen automatisch auf transparente Ränder geprüft, damit sie größer und einheitlicher wirken.",
   "save": "Speichern",
@@ -38,5 +41,6 @@
   "confirm_delete": "„{name}“ wirklich löschen?",
   "light": "Lightmode",
   "dark": "Darkmode",
+  "clear_search": "Suche löschen",
   "page_of": "Seite {current} / {total}"
 }

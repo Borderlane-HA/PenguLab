@@ -23,8 +23,11 @@
   "dialog_clone": "Clone tile",
   "field_name": "App name",
   "field_url": "URL",
+  "field_url_placeholder": "https://...",
   "field_description": "Description",
+  "field_description_placeholder": "Short description...",
   "field_category": "Category",
+  "field_category_placeholder": "e.g. Smart Home",
   "field_image": "Logo / Image",
   "image_hint": "Uploaded logos are automatically checked for transparent borders so they appear larger and more consistent.",
   "save": "Save",
@@ -38,5 +41,6 @@
   "confirm_delete": "Really delete “{name}”?",
   "light": "Light mode",
   "dark": "Dark mode",
+  "clear_search": "Clear search",
   "page_of": "Page {current} / {total}"
 }
