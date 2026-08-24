@@ -92,7 +92,8 @@ try {
         case 'widgets/data':
             require_method('GET');
             $id = trim((string)($_GET['id'] ?? ''));
-            json_response(['ok' => true, 'data' => widget_data($db, $addons, $integrations, $id)]);
+            $cachedOnly = !empty($_GET['cached']);
+            json_response(['ok' => true, 'data' => widget_data($db, $addons, $integrations, $id, $cachedOnly)]);
 
         case 'addons/install':
             require_method('POST');
@@ -282,7 +283,7 @@ function save_app(Database $db, array $input): array
     $stmt->execute(compact('id','name','url','description','category','image','position','created') + ['updated' => $now]);
 
     if (!$existing && !empty($input['add_to_dashboard'])) {
-        create_widget($db, null, ['type' => 'app', 'config' => ['app_id' => $id, 'layout' => 'vertical'], 'w' => 2, 'h' => 2]);
+        create_widget($db, null, ['type' => 'app', 'config' => ['app_id' => $id, 'layout' => 'vertical'], 'w' => 1, 'h' => 1]);
     }
 
     $stmt = $db->pdo()->prepare('SELECT * FROM apps WHERE id=:id');
@@ -366,7 +367,84 @@ function save_layout(Database $db, mixed $items): void
     });
 }
 
-function widget_data(Database $db, $addons, $integrations, string $id): array
+function integration_cache_payload(Database $db, string $integrationId, string $type): array
+{
+    $stmt = $db->pdo()->prepare('SELECT summary_json,fetched_at FROM integration_widget_cache WHERE integration_id=:id');
+    $stmt->execute(['id'=>$integrationId]);
+    $row = $stmt->fetch();
+    $summary = [];
+    $fetchedAt = 0;
+    if (is_array($row)) {
+        $decoded = json_decode((string)$row['summary_json'], true);
+        if (is_array($decoded)) $summary = $decoded;
+        $fetchedAt = (int)$row['fetched_at'];
+    }
+    return [
+        'summary'=>$summary,
+        'history'=>integration_metric_history($db, $integrationId, $type),
+        'cached'=>$summary !== [],
+        'fetched_at'=>$fetchedAt,
+        'cache_age'=>$fetchedAt > 0 ? max(0, time()-$fetchedAt) : null,
+    ];
+}
+
+function integration_metric_history(Database $db, string $integrationId, string $type): array
+{
+    $metric = in_array($type, ['pihole','adguardhome'], true) ? 'dns' : ($type === 'opnsense' ? 'traffic' : '');
+    if ($metric === '') return ['metric'=>'','a'=>[],'b'=>[],'timestamps'=>[]];
+    $stmt = $db->pdo()->prepare('SELECT sampled_at,value_a,value_b FROM integration_metric_samples WHERE integration_id=:id AND metric=:metric ORDER BY sampled_at DESC LIMIT 41');
+    $stmt->execute(['id'=>$integrationId,'metric'=>$metric]);
+    $rows = array_reverse($stmt->fetchAll());
+    $a=[]; $b=[]; $timestamps=[]; $previous=null;
+    foreach ($rows as $row) {
+        $current=['t'=>(int)$row['sampled_at'],'a'=>(float)$row['value_a'],'b'=>(float)$row['value_b']];
+        if ($previous !== null) {
+            $seconds = max(1, $current['t']-$previous['t']);
+            $deltaA = $current['a']-$previous['a'];
+            $deltaB = $current['b']-$previous['b'];
+            if ($deltaA >= 0 && $deltaB >= 0) {
+                $factor = $metric === 'dns' ? (60/$seconds) : (1/$seconds);
+                $a[] = round($deltaA*$factor, 3);
+                $b[] = round($deltaB*$factor, 3);
+                $timestamps[] = $current['t'];
+            }
+        }
+        $previous=$current;
+    }
+    if (count($a)>30) { $a=array_slice($a,-30); $b=array_slice($b,-30); $timestamps=array_slice($timestamps,-30); }
+    return ['metric'=>$metric,'a'=>$a,'b'=>$b,'timestamps'=>$timestamps];
+}
+
+function persist_integration_widget_data(Database $db, array $integration, array $summary): array
+{
+    $integrationId=(string)($integration['id']??'');
+    $type=(string)($integration['type']??'');
+    if ($integrationId==='') return ['metric'=>'','a'=>[],'b'=>[],'timestamps'=>[]];
+    $now=time();
+    $stmt=$db->pdo()->prepare('INSERT INTO integration_widget_cache(integration_id,summary_json,fetched_at) VALUES(:id,:summary,:fetched) ON CONFLICT(integration_id) DO UPDATE SET summary_json=excluded.summary_json,fetched_at=excluded.fetched_at');
+    $stmt->execute(['id'=>$integrationId,'summary'=>json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'fetched'=>$now]);
+
+    $metric=''; $a=null; $b=null;
+    if (in_array($type,['pihole','adguardhome'],true)) {
+        $metric='dns'; $a=(float)($summary['queries']??0); $b=(float)($summary['blocked']??0);
+    } elseif ($type==='opnsense' && is_array($summary['traffic']??null)) {
+        $metric='traffic'; $a=(float)($summary['traffic']['rx_bytes']??0); $b=(float)($summary['traffic']['tx_bytes']??0);
+    }
+    if ($metric!=='' && $a!==null && $b!==null) {
+        $last=$db->pdo()->prepare('SELECT sampled_at FROM integration_metric_samples WHERE integration_id=:id AND metric=:metric ORDER BY sampled_at DESC LIMIT 1');
+        $last->execute(['id'=>$integrationId,'metric'=>$metric]);
+        $lastAt=(int)($last->fetchColumn()?:0);
+        if ($lastAt===0 || $now-$lastAt>=3) {
+            $insert=$db->pdo()->prepare('INSERT INTO integration_metric_samples(integration_id,metric,sampled_at,value_a,value_b) VALUES(:id,:metric,:sampled,:a,:b)');
+            $insert->execute(['id'=>$integrationId,'metric'=>$metric,'sampled'=>$now,'a'=>$a,'b'=>$b]);
+            $prune=$db->pdo()->prepare('DELETE FROM integration_metric_samples WHERE integration_id=:id AND metric=:metric AND id NOT IN (SELECT id FROM integration_metric_samples WHERE integration_id=:id2 AND metric=:metric2 ORDER BY sampled_at DESC LIMIT 121)');
+            $prune->execute(['id'=>$integrationId,'metric'=>$metric,'id2'=>$integrationId,'metric2'=>$metric]);
+        }
+    }
+    return integration_metric_history($db,$integrationId,$type);
+}
+
+function widget_data(Database $db, $addons, $integrations, string $id, bool $cachedOnly=false): array
 {
     $widget = null;
     foreach ($db->widgets() as $item) if ($item['id'] === $id) $widget = $item;
@@ -386,7 +464,11 @@ function widget_data(Database $db, $addons, $integrations, string $id): array
             if ($integrationId === '') throw new RuntimeException('No integration selected.');
             $integration = null;
             foreach ($integrations->list() as $entry) if ($entry['id'] === $integrationId) $integration = $entry;
-            return ['kind'=>'integration','integration'=>$integration,'summary'=>$integrations->execute($integrationId, 'summary')];
+            if (!$integration) throw new RuntimeException('Integration not found.');
+            if ($cachedOnly) return ['kind'=>'integration','integration'=>$integration] + integration_cache_payload($db,$integrationId,(string)$integration['type']);
+            $summary=$integrations->execute($integrationId,'summary');
+            $history=persist_integration_widget_data($db,$integration,$summary);
+            return ['kind'=>'integration','integration'=>$integration,'summary'=>$summary,'history'=>$history,'cached'=>false,'fetched_at'=>time(),'cache_age'=>0];
         case 'rss':
             if (!$addons->enabled('rss')) throw new RuntimeException('RSS package is not installed.');
             $url = clean_url((string)($config['feed_url'] ?? ''));
@@ -496,7 +578,9 @@ function import_data(array $ctx, mixed $data): void
                 if (!is_array($widget)) continue;
                 $id = trim((string)($widget['id'] ?? '')) ?: Database::uuid('widget');
                 $now=gmdate(DATE_ATOM);
-                $w=max(2,min(12,(int)($widget['w']??3)));
+                $type=(string)($widget['type']??'');
+                $minW=$type==='app'?1:2;
+                $w=max($minW,min(12,(int)($widget['w']??3)));
                 $h=max(1,min(8,(int)($widget['h']??2)));
                 $x=max(0,min(12-$w,(int)($widget['x']??0)));
                 $y=max(0,(int)($widget['y']??0));

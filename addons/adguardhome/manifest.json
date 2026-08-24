@@ -1,7 +1,7 @@
 {
   "id": "adguardhome",
   "name": "AdGuard Home",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "category": "DNS",
   "author": "Borderlane-HA",
   "description": "AdGuard Home monitoring and protection controls using its documented /control API.",
@@ -60,6 +60,34 @@
         "label": "Schutz-Steuerung anzeigen",
         "type": "boolean",
         "default": true
+      },
+      {
+        "key": "refresh_interval",
+        "label": "Live-Aktualisierung",
+        "type": "select",
+        "default": "10",
+        "options": [
+          {
+            "value": "5",
+            "label": "alle 5 Sekunden"
+          },
+          {
+            "value": "10",
+            "label": "alle 10 Sekunden"
+          },
+          {
+            "value": "15",
+            "label": "alle 15 Sekunden"
+          },
+          {
+            "value": "30",
+            "label": "alle 30 Sekunden"
+          },
+          {
+            "value": "60",
+            "label": "alle 60 Sekunden"
+          }
+        ]
       }
     ]
   },

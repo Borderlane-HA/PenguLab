@@ -162,3 +162,24 @@ html[data-theme="dark"]{--bg:#11141b;--surface:#191d26;--surface-2:#1e232d;--sur
   .ipm-scan-head{align-items:flex-start;flex-wrap:wrap}
   .ipm-scan-head .btn{margin-left:0}
 }
+
+/* PenguLab 2.0 alpha.6: persistent live widgets and dense app shortcuts */
+.widget-type-app .app-widget-name{font-size:12px!important;line-height:1.15;font-weight:780;letter-spacing:-.015em}
+.widget-type-app.app-widget-xs .app-widget{flex-direction:column;justify-content:center;align-items:center;gap:4px;text-align:center;padding:3px}
+.widget-type-app.app-widget-xs .app-icon{width:30px;height:30px;flex-basis:30px;border-radius:9px}
+.widget-type-app.app-widget-xs .app-widget-copy{display:block!important;width:100%;min-width:0;text-align:center}
+.widget-type-app.app-widget-xs .app-widget-name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px!important}
+.widget-type-app.app-widget-xs .app-widget-meta,.widget-type-app.app-widget-xs .app-widget-open{display:none!important}
+.widget-type-app.app-widget-sm .app-icon{width:40px;height:40px;flex-basis:40px;border-radius:12px}
+.widget-type-app.app-widget-sm .app-widget-name{font-size:12px!important}
+.widget-type-app.app-widget-lg .app-widget-name{font-size:12px!important}
+.widget-type-app .app-layout-vertical .app-widget-name{font-size:12px!important;line-height:1.15}
+.widget-type-app.app-widget-xs .app-layout-vertical .app-widget-copy{display:block!important}
+.widget-type-app.app-widget-xs .app-layout-icon .app-widget-copy{display:none!important}
+.widget-type-app.app-widget-xs .app-layout-icon .app-icon{width:36px;height:36px;flex-basis:36px}
+.editing .widget-type-app.app-widget-xs .widget-head{left:4px;right:4px;top:4px;height:25px;padding:0 3px;background:color-mix(in srgb,var(--surface) 82%,transparent)}
+.editing .widget-type-app.app-widget-xs .widget-title{display:none}
+.editing .widget-type-app.app-widget-xs .widget-body{padding:5px;padding-top:29px}
+.editing .widget-type-app.app-widget-xs .app-icon{width:24px;height:24px;flex-basis:24px}
+.editing .widget-type-app.app-widget-xs .app-widget-name{font-size:10px!important}
+.sparkline-empty{display:flex;align-items:center;height:30px;color:var(--soft);font-size:8px}

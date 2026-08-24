@@ -13,6 +13,17 @@ final class Favicon
     public static function detect(string $pageUrl, bool $verifyTls = true): string
     {
         $pageUrl = self::normalizeUrl($pageUrl);
+        $image = self::detectOnce($pageUrl, $verifyTls);
+        // Internal homelab services commonly use self-signed certificates. Retry only
+        // for local/private targets so public HTTPS verification remains strict.
+        if ($image === '' && $verifyTls && self::allowInsecureRetry($pageUrl)) {
+            $image = self::detectOnce($pageUrl, false);
+        }
+        return $image;
+    }
+
+    private static function detectOnce(string $pageUrl, bool $verifyTls): string
+    {
         $html = self::fetch($pageUrl, self::MAX_HTML_BYTES, $verifyTls, 'text/html,application/xhtml+xml,*/*;q=0.2');
         $favicon = '';
 
@@ -58,6 +69,29 @@ final class Favicon
         return 'data:' . $mime . ';base64,' . base64_encode($icon['body']);
     }
 
+    private static function allowInsecureRetry(string $url): bool
+    {
+        $host = strtolower((string)(parse_url($url, PHP_URL_HOST) ?? ''));
+        if ($host === '') return false;
+        if ($host === 'localhost' || !str_contains($host, '.')) return true;
+        foreach (['.local','.lan','.internal','.home','.home.arpa'] as $suffix) {
+            if (str_ends_with($host, $suffix)) return true;
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+        }
+        // Internal DNS names may use a normal-looking suffix. If they resolve only to
+        // private/reserved IPv4 addresses, the relaxed retry is still local-only.
+        $addresses = @gethostbynamel($host) ?: [];
+        if ($addresses !== []) {
+            foreach ($addresses as $address) {
+                if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
     private static function normalizeUrl(string $url): string
     {
         $url = trim($url);
@@ -77,7 +111,7 @@ final class Favicon
         if ($ch === false) return ['status'=>0,'body'=>'','content_type'=>'','effective_url'=>$url];
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => false,
-            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_FOLLOWLOCATION => $verifyTls,
             CURLOPT_MAXREDIRS => 3,
             CURLOPT_CONNECTTIMEOUT => 3,
             CURLOPT_TIMEOUT => 6,

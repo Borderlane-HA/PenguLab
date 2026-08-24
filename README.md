@@ -4,17 +4,19 @@
 
 Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a flexible dashboard, service integrations and installable PenguHub packages in one lightweight self-hosted interface.
 
-> **Status:** `2.0.0-alpha.5` — this branch is an architectural preview and migration build. Back up your existing `apps.json` before testing an upgrade.
+> **Status:** `2.0.0-alpha.6` — this branch is an architectural preview and migration build. Back up your existing `apps.json` before testing an upgrade.
 
 ## What is new in 2.0
 
 - Flexible dashboard with resizable and draggable widgets
-- Adaptive app shortcuts from compact 1×1 tiles to larger cards
+- Adaptive app shortcuts from dense 1×1 icon+label tiles to larger cards
 - High-density app library with search, category chips and compact/detail views
-- Automatic server-side favicon discovery for app shortcuts
+- Automatic server-side favicon discovery for app shortcuts, including a local-only self-signed TLS fallback
 - Per-widget app layout: automatic, icon above text, icon beside text, or icon-only
 - Per-integration widget-content switches for DNS and OPNsense cards
 - OPNsense gateway/RAM/WireGuard metrics plus a sampled WAN traffic mini-graph
+- persistent server-side widget snapshots/history: cached values render immediately after reload or navigation, then refresh live
+- configurable integration refresh interval (5–60 seconds)
 - Per-network discovery in IP Manager with Nmap + optional OPNsense ARP enrichment
 - Pi-hole and AdGuard Home protection controls directly from dashboard widgets
 - Separate **Apps**, **Integrations**, **PenguHub** and **Settings** areas
@@ -87,6 +89,8 @@ Secrets are encrypted in SQLite and are not included in normal JSON exports.
 
 Pi-hole and AdGuard Home widgets can optionally perform a small, explicit set of control actions: **resume protection**, **pause for 5 minutes**, and **pause indefinitely**. These actions are proxied through PenguLab; credentials remain server-side. OPNsense stays read-only in the current alpha. Its widget can selectively show gateway health, RAM, WireGuard and a sampled traffic graph; these options are configured on the integration itself.
 
+Integration widgets keep their latest successful snapshot and metric samples in SQLite. When returning to the dashboard, PenguLab renders the cached state immediately and refreshes it in the background; graphs therefore no longer restart from an empty browser-only history. The refresh cadence can be selected per integration (5/10/15/30/60 seconds).
+
 For OPNsense discovery/traffic features, keep the API account read-only and grant only the pages you need. In current OPNsense builds the ARP endpoints are covered by **Diagnostics: ARP Table** and interface statistics by **Diagnostics: Netstat**. Optional endpoints that the API account cannot access are skipped instead of breaking the whole widget.
 
 ## Release channels
@@ -97,9 +101,9 @@ PenguLab uses separate Docker channels so test builds cannot replace the product
 | --- | --- | --- |
 | Stable GitHub release | `latest` | Production |
 | GitHub pre-release | `prerelease` | Alpha / beta / RC testing |
-| Every release | exact release tag, e.g. `2.0.0-alpha.5` | Pinning / reproducible tests |
+| Every release | exact release tag, e.g. `2.0.0-alpha.6` | Pinning / reproducible tests |
 
-A GitHub **pre-release never updates `latest`**. Publishing `2.0.0-alpha.5` as a pre-release therefore publishes both `:2.0.0-alpha.5` and `:prerelease`, while the last stable build remains on `:latest`.
+A GitHub **pre-release never updates `latest`**. Publishing `2.0.0-alpha.6` as a pre-release therefore publishes both `:2.0.0-alpha.6` and `:prerelease`, while the last stable build remains on `:latest`.
 
 > **Note for `2.0.0-alpha.1`:** the first alpha workflow still tagged every published release as `latest`. If that workflow already ran, re-publish the last stable source (for example `1.0.3`) with the workflow's manual **stable** channel once. The corrected workflow in alpha.2 prevents this for future pre-releases.
 
@@ -141,8 +145,8 @@ http://YOURDOCKERHOST:19961
 ### Testing this alpha from the source tree
 
 ```bash
-docker build -t pengulab:2.0-alpha.5 .
-docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0-alpha.5
+docker build -t pengulab:2.0-alpha.6 .
+docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0-alpha.6
 ```
 
 ## Proxmox VE LXC
@@ -190,7 +194,7 @@ To pin the test LXC to this exact pre-release instead:
 
 ```bash
 pct enter <TEST-CTID>
-pengulabctl version 2.0.0-alpha.5
+pengulabctl version 2.0.0-alpha.6
 pengulabctl update
 ```
 

@@ -210,9 +210,25 @@ CREATE TABLE IF NOT EXISTS integrations (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_integrations_type ON integrations(type);
+CREATE TABLE IF NOT EXISTS integration_widget_cache (
+    integration_id TEXT PRIMARY KEY,
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    fetched_at INTEGER NOT NULL,
+    FOREIGN KEY(integration_id) REFERENCES integrations(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS integration_metric_samples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    integration_id TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    sampled_at INTEGER NOT NULL,
+    value_a REAL NOT NULL,
+    value_b REAL NOT NULL,
+    FOREIGN KEY(integration_id) REFERENCES integrations(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_integration_metric_samples_lookup ON integration_metric_samples(integration_id, metric, sampled_at DESC);
 SQL;
         $this->pdo->exec($sql);
-        $this->setMeta('schema_version', '1');
+        $this->setMeta('schema_version', '2');
     }
 
     private function ensureDefaults(): void

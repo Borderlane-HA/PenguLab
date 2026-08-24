@@ -22,6 +22,7 @@
 - [ ] dashboard layout presets and multiple dashboards
 - [x] richer service-specific widgets and charts (first DNS/OPNsense pass)
 - [x] widget/integration display configuration (first pass)
+- [x] persistent integration snapshots/history and configurable live refresh cadence
 - [ ] mobile dashboard editing improvements
 - [ ] service status aggregation and last-refresh controls
 - [ ] localization pass for all new 2.0 UI strings

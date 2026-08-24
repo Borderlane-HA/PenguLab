@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.0-alpha.6
+
+### Added
+- Added persistent SQLite snapshots and time-series samples for integration widgets. Cached Pi-hole, AdGuard Home and OPNsense values/graphs render immediately after dashboard navigation or a browser reload, then update in the background.
+- Added a selectable live refresh interval (5, 10, 15, 30 or 60 seconds) per Pi-hole, AdGuard Home and OPNsense integration.
+- Added a local-only self-signed TLS fallback for automatic favicon discovery. Public HTTPS targets still require valid certificates.
+- Added dense 1×1 app shortcuts that show a smaller icon plus the app name, allowing four shortcuts in the area previously used by one 2×2 app tile.
+
+### Changed
+- App widget labels now use one consistent text size across normal dashboard tile sizes; icon size, spacing and secondary information adapt instead.
+- New app shortcuts added directly to the dashboard default to 1×1 and icon-over-text layout.
+- Integration polling no longer allows overlapping requests for the same widget.
+- Empty graph state is limited to the first measurement interval; once one rate sample exists a flat trace is rendered and then grows with future samples.
+
 ## 2.0.0-alpha.5
 
 ### Added

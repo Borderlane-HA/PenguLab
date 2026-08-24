@@ -1,7 +1,7 @@
 {
   "id": "opnsense",
   "name": "OPNsense",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "category": "Network",
   "author": "Borderlane-HA",
   "description": "Read-only OPNsense health, gateway, traffic, WireGuard and ARP monitoring through API key/secret authentication.",
@@ -82,6 +82,34 @@
         "type": "text",
         "default": "wan",
         "placeholder": "wan oder Interface-Name"
+      },
+      {
+        "key": "refresh_interval",
+        "label": "Live-Aktualisierung",
+        "type": "select",
+        "default": "10",
+        "options": [
+          {
+            "value": "5",
+            "label": "alle 5 Sekunden"
+          },
+          {
+            "value": "10",
+            "label": "alle 10 Sekunden"
+          },
+          {
+            "value": "15",
+            "label": "alle 15 Sekunden"
+          },
+          {
+            "value": "30",
+            "label": "alle 30 Sekunden"
+          },
+          {
+            "value": "60",
+            "label": "alle 60 Sekunden"
+          }
+        ]
       }
     ]
   },
