@@ -18,6 +18,8 @@ $settings = [
     'language' => $ctx['db']->setting('language', 'de'),
 ];
 $active = $addonEntry ? $addonId : 'dashboard';
+$version = (string)($ctx['version'] ?? 'dev');
+$assetVersion = rawurlencode($version);
 ?><!doctype html>
 <html lang="<?= htmlspecialchars((string)$settings['language']) ?>" data-theme="<?= htmlspecialchars((string)$settings['theme']) ?>">
 <head>
@@ -26,7 +28,7 @@ $active = $addonEntry ? $addonId : 'dashboard';
   <meta name="color-scheme" content="light dark">
   <title>PenguLab</title>
   <link rel="icon" type="image/png" href="favicon.png">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.0.0-alpha.1">
+  <link rel="stylesheet" href="assets/css/app.css?v=<?= htmlspecialchars($assetVersion) ?>">
 </head>
 <body>
 <div class="shell">
@@ -52,8 +54,8 @@ $active = $addonEntry ? $addonId : 'dashboard';
         <button class="avatar-btn" type="button" title="Local instance">P</button>
       </header>
       <main class="main" id="app"><div class="boot-loader"><span></span><p>PenguLab wird geladen…</p></div></main>
-      <script>window.PENGULAB={api:'api.php',version:'2.0.0-alpha.1'};</script>
-      <script src="assets/js/app.js?v=2.0.0-alpha.1" defer></script>
+      <script>window.PENGULAB={api:'api.php',version:<?= json_encode($version, JSON_UNESCAPED_SLASHES) ?>};</script>
+      <script src="assets/js/app.js?v=<?= htmlspecialchars($assetVersion) ?>" defer></script>
     <?php endif; ?>
   </div>
 </div>

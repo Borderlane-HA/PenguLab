@@ -1,0 +1,13 @@
+{
+  "id": "rss",
+  "name": "RSS News",
+  "version": "1.0.0",
+  "category": "Content",
+  "author": "Borderlane-HA",
+  "description": "Display RSS and Atom feeds directly on the dashboard.",
+  "icon": "rss",
+  "permissions": ["network.http"],
+  "widgets": [
+    {"type": "rss", "name": "RSS / Atom Feed", "description": "Latest entries from a feed.", "icon": "rss", "defaultSize": [6, 3]}
+  ]
+}

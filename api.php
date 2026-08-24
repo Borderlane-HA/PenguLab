@@ -193,7 +193,7 @@ function settings_payload(Database $db): array
 function bootstrap_payload(array $ctx): array
 {
     return [
-        'version' => '2.0.0-alpha.1',
+        'version' => (string)($ctx['version'] ?? 'dev'),
         'csrf' => $ctx['csrf'],
         'settings' => settings_payload($ctx['db']),
         'apps' => $ctx['db']->apps(),
@@ -413,7 +413,7 @@ function export_data(array $ctx): array
 
     return [
         'format'=>'pengulab-2',
-        'version'=>'2.0.0-alpha.1',
+        'version'=>(string)($ctx['version'] ?? 'dev'),
         'exported_at'=>gmdate(DATE_ATOM),
         'settings'=>settings_payload($db),
         'apps'=>$db->apps(),

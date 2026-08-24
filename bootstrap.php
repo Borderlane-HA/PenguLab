@@ -38,8 +38,10 @@ $db = new Database($dataDir, __DIR__);
 $secrets = new Secrets($dataDir);
 $addons = new AddonManager($db, __DIR__ . '/addons');
 $integrations = new IntegrationManager($db, $addons, $secrets);
+$version = trim((string)@file_get_contents(__DIR__ . '/VERSION')) ?: 'dev';
 
 return [
+    'version' => $version,
     'db' => $db,
     'secrets' => $secrets,
     'addons' => $addons,
