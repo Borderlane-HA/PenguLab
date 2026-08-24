@@ -8,6 +8,8 @@
     csrf: '',
     view: 'dashboard',
     editMode: false,
+    layoutOriginal: null,
+    layoutDirty: false,
     appSearch: '',
     appCategory: 'all',
     appView: localStorage.getItem('pengulab-app-view') || 'compact',
@@ -26,6 +28,7 @@
   const hostOf = (url) => { try { return new URL(url).host; } catch { return url || ''; } };
   const fmt = (n) => new Intl.NumberFormat(document.documentElement.lang || 'de-DE', { maximumFractionDigits: 1 }).format(Number(n || 0));
   const fmtDate = (value) => { if (!value) return ''; const d = new Date(value); return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat(document.documentElement.lang || 'de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(d); };
+  const fmtTime = (value) => { if (!value) return ''; const raw=typeof value==='number'&&value<1e12?value*1000:value; const d=new Date(raw); return Number.isNaN(d.getTime())?'':new Intl.DateTimeFormat(document.documentElement.lang||'de-DE',{hour:'2-digit',minute:'2-digit'}).format(d); };
   const isAdmin = () => state.boot?.user?.role === 'admin';
 
   async function api(route, options = {}) {
@@ -119,14 +122,60 @@
     window.scrollTo({top:0, behavior:'auto'});
   }
 
+  function layoutSnapshot() {
+    const out = {};
+    for (const w of state.boot?.widgets || []) out[w.id] = {x:w.x,y:w.y,w:w.w,h:w.h};
+    return out;
+  }
+
+  function beginLayoutEdit() {
+    state.layoutOriginal = layoutSnapshot();
+    state.layoutDirty = false;
+    state.editMode = true;
+    renderDashboard();
+  }
+
+  function discardLayoutEdit({renderAfter=true} = {}) {
+    if (state.layoutOriginal) {
+      for (const widget of state.boot?.widgets || []) {
+        const original = state.layoutOriginal[widget.id];
+        if (original) Object.assign(widget, original);
+      }
+    }
+    state.layoutOriginal = null;
+    state.layoutDirty = false;
+    state.editMode = false;
+    if (renderAfter) renderDashboard();
+  }
+
+  async function commitLayoutEdit() {
+    if (!state.editMode) return;
+    if (!state.layoutDirty) { discardLayoutEdit(); return; }
+    const button=$('#saveLayoutBtn');if(button){button.disabled=true;button.textContent='Speichert…';}
+    try {
+      const d=await api('widgets/layout',{body:{widgets:(state.boot.widgets||[]).map(({id,x,y,w,h})=>({id,x,y,w,h}))}});
+      state.boot.widgets=d.widgets;
+      state.layoutOriginal=null;state.layoutDirty=false;state.editMode=false;
+      renderDashboard();toast('Dashboard-Layout gespeichert.');
+    } catch(e) {
+      if(button){button.disabled=false;button.textContent='Speichern';}
+      toast(e.message,'error');
+    }
+  }
+
   function renderDashboard() {
     const widgets = state.boot.widgets || [];
     const title = state.boot.settings?.dashboard_title || 'My Homelab';
-    const dashboardActions=isAdmin()?`<button class="btn" id="editLayoutBtn">${state.editMode ? 'Fertig' : 'Layout bearbeiten'}</button><button class="btn primary" id="addWidgetBtn">+ Widget</button>`:'';
-    appRoot.innerHTML = pageHead('Control Center', title, 'Apps, Services und Homelab-Status an einem Ort.', dashboardActions) + (isAdmin()?`<div class="dashboard-toolbar"><span class="edit-hint">Widgets ziehen oder am rechten unteren Rand skalieren. Änderungen werden automatisch gespeichert.</span></div>`:'') +
+    const dashboardActions=isAdmin()?(state.editMode
+      ? `<button class="btn" id="cancelLayoutBtn">Abbrechen</button><button class="btn primary" id="saveLayoutBtn">Speichern</button>`
+      : `<button class="btn" id="editLayoutBtn">Layout bearbeiten</button><button class="btn primary" id="addWidgetBtn">+ Widget</button>`):'';
+    const editHint=state.editMode?'Widgets ziehen oder am rechten unteren Rand skalieren. Erst „Speichern“ übernimmt das komplette Layout.':'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
+    appRoot.innerHTML = pageHead('Control Center', title, 'Apps, Services und Homelab-Status an einem Ort.', dashboardActions) + (isAdmin()?`<div class="dashboard-toolbar"><span class="edit-hint">${esc(editHint)}</span></div>`:'') +
     `<div class="dashboard-grid" id="dashboardGrid">${widgets.length ? widgets.map(widgetShell).join('') : `<div class="empty-dashboard"><h3>Dein Dashboard ist bereit</h3><p>${isAdmin()?'Füge Apps, Statuskarten, RSS oder Add-on-Widgets hinzu.':'Für deinen Benutzer sind noch keine Dashboard-Widgets freigegeben.'}</p>${isAdmin()?'<button class="btn primary" id="emptyAddWidget">+ Erstes Widget</button>':''}</div>`}</div>`;
 
-    $('#editLayoutBtn')?.addEventListener('click', () => { state.editMode = !state.editMode; renderDashboard(); document.body.classList.toggle('editing', state.editMode); });
+    $('#editLayoutBtn')?.addEventListener('click', beginLayoutEdit);
+    $('#cancelLayoutBtn')?.addEventListener('click', ()=>discardLayoutEdit());
+    $('#saveLayoutBtn')?.addEventListener('click', commitLayoutEdit);
     $('#addWidgetBtn')?.addEventListener('click', openWidgetPicker);
     $('#emptyAddWidget')?.addEventListener('click', ()=>isAdmin()&&openWidgetPicker());
     $$('.widget-remove', appRoot).forEach(btn => btn.addEventListener('click', async e => {
@@ -343,9 +392,12 @@
       if(h.last){const mins=Math.max((current.t-h.last.t)/60000,.1);h.a.push(Math.max(0,(current.a-h.last.a)/mins));h.b.push(Math.max(0,(current.b-h.last.b)/mins));if(h.a.length>30)h.a.shift();if(h.b.length>30)h.b.shift();}h.last=current;
     }
     if(type==='opnsense'&&summary.traffic){
-      const rx=Number(summary.traffic.rx_bytes),tx=Number(summary.traffic.tx_bytes);if(Number.isFinite(rx)&&Number.isFinite(tx)){
-        const h=historyBucket(`${integration.id}:traffic`),current={t:now,a:rx,b:tx};
-        if(h.last){const sec=Math.max((current.t-h.last.t)/1000,1);h.a.push(Math.max(0,(current.a-h.last.a)/sec));h.b.push(Math.max(0,(current.b-h.last.b)/sec));if(h.a.length>30)h.a.shift();if(h.b.length>30)h.b.shift();}h.last=current;
+      const rawRx=summary.traffic.rx_bytes,rawTx=summary.traffic.tx_bytes;
+      if(rawRx!==null&&rawRx!==undefined&&rawTx!==null&&rawTx!==undefined){
+        const rx=Number(rawRx),tx=Number(rawTx);if(Number.isFinite(rx)&&Number.isFinite(tx)){
+          const h=historyBucket(`${integration.id}:traffic`),current={t:now,a:rx,b:tx};
+          if(h.last){const sec=Math.max((current.t-h.last.t)/1000,1);const da=current.a-h.last.a,db=current.b-h.last.b;if(da>=0&&db>=0){h.a.push(da/sec);h.b.push(db/sec);if(h.a.length>30)h.a.shift();if(h.b.length>30)h.b.shift();}}h.last=current;
+        }
       }
     }
   }
@@ -356,11 +408,13 @@
     const type = integration.type || '';
     if (type === 'pihole' || type === 'adguardhome') {
       const active = summary.protection !== false;
-      const showStats=integrationOption(integration,'show_stats',true),showGraph=integrationOption(integration,'show_graph',true),showControls=integrationOption(integration,'show_controls',true),showClients=type==='pihole'&&integrationOption(integration,'show_clients',true);
+      const showStats=integrationOption(integration,'show_stats',true),showGraph=integrationOption(integration,'show_graph',true),showControls=integrationOption(integration,'show_controls',true),showClients=type==='pihole'&&integrationOption(integration,'show_clients',true),showRecent=integrationOption(integration,'show_recent_blocked',false);
       const h=historyBucket(`${integration.id}:dns`);const graph=showGraph?`<div class="mini-graph-grid"><div><div class="mini-graph-label"><span>Queries/min</span><strong>${h.a.length?fmt(h.a.at(-1)):''}</strong></div>${sparkline(h.a,'queries')}</div><div><div class="mini-graph-label"><span>Blocked/min</span><strong>${h.b.length?fmt(h.b.at(-1)):''}</strong></div>${sparkline(h.b,'blocked')}</div></div>`:'';
       const metrics=showStats?`<div class="metric-grid dns-metrics"><div class="metric"><div class="metric-label">Queries</div><div class="metric-value">${fmt(summary.queries)}</div></div><div class="metric"><div class="metric-label">Blocked</div><div class="metric-value">${fmt(summary.blocked_percent)}%</div></div><div class="metric"><div class="metric-label">Status</div><div class="metric-value">${active ? 'Active' : 'Paused'}</div></div>${showClients?`<div class="metric"><div class="metric-label">Clients</div><div class="metric-value">${fmt(summary.clients)}</div></div>`:''}</div>`:'';
+      const recentRows=Array.isArray(summary.recent_blocked)?summary.recent_blocked:[];
+      const recent=showRecent?`<div class="recent-blocked"><div class="recent-blocked-head"><span>Letzte Blockierungen</span>${summary.recent_blocked_error?'<small>Query-Log nicht verfügbar</small>':''}</div>${recentRows.length?recentRows.map(row=>`<div class="recent-blocked-row"><span class="recent-blocked-domain" title="${attr(row.domain||'')}">${esc(row.domain||'')}</span><span class="recent-blocked-time">${esc(fmtTime(row.time))}</span></div>`).join(''):`<div class="recent-blocked-empty">${summary.recent_blocked_error?'Keine Daten verfügbar.':'Noch keine Blockierungen im geladenen Zeitraum.'}</div>`}</div>`:'';
       const controls=showControls?`<div class="service-actions"><button class="service-action ${active?'':'primary'}" data-integration-action="protection_enable" ${active?'disabled':''}>Fortsetzen</button><button class="service-action" data-integration-action="protection_pause_300">5 Min Pause</button><button class="service-action danger" data-integration-action="protection_disable" ${!active?'disabled':''}>Anhalten</button></div>`:'';
-      return `<div class="dns-widget"><div class="service-heading"><span class="status-dot ${active?'':'paused'}"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state ${active?'active':'paused'}">${active?'Schutz aktiv':'Schutz pausiert'}</span></div>${metrics}${graph}${controls}</div>`;
+      return `<div class="dns-widget"><div class="service-heading"><span class="status-dot ${active?'':'paused'}"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state ${active?'active':'paused'}">${active?'Schutz aktiv':'Schutz pausiert'}</span></div>${metrics}${graph}${recent}${controls}</div>`;
     }
     if (type === 'opnsense') {
       const cfg=integration.config||{}, metrics=[];
@@ -368,8 +422,8 @@
       if(integrationOption(integration,'show_gateway',true)&&summary.gateway){const g=summary.gateway;metrics.push(['Gateway',g.status||'unknown']);if(g.delay)metrics.push(['Latenz',String(g.delay)]);}
       if(integrationOption(integration,'show_memory',true)&&summary.memory_percent!==null&&summary.memory_percent!==undefined)metrics.push(['RAM',`${fmt(summary.memory_percent)}%`]);
       if(integrationOption(integration,'show_wireguard',false)&&summary.wireguard?.available)metrics.push(['WireGuard',summary.wireguard.running?'Online':'Offline']);
-      const trafficEnabled=integrationOption(integration,'show_traffic',true)&&summary.traffic;const h=historyBucket(`${integration.id}:traffic`);const rx=h.a.length?h.a.at(-1):0,tx=h.b.length?h.b.at(-1):0;
-      const traffic=trafficEnabled?`<div class="opn-traffic"><div class="mini-graph-label"><span>${esc(summary.traffic.label||summary.traffic.interface||cfg.traffic_interface||'WAN')} Traffic</span><strong>↓ ${fmtRate(rx)} · ↑ ${fmtRate(tx)}</strong></div><div class="traffic-sparks">${sparkline(h.a,'rx')}${sparkline(h.b,'tx')}</div></div>`:'';
+      const trafficEnabled=integrationOption(integration,'show_traffic',true)&&summary.traffic;const h=historyBucket(`${integration.id}:traffic`);const rx=h.a.length?h.a.at(-1):null,tx=h.b.length?h.b.at(-1):null;
+      const traffic=trafficEnabled?`<div class="opn-traffic"><div class="mini-graph-label"><span>${esc(summary.traffic.label||summary.traffic.interface||cfg.traffic_interface||'WAN')} Traffic</span><strong>${rx===null||tx===null?'Messung startet…':`↓ ${fmtRate(rx)} · ↑ ${fmtRate(tx)}`}</strong></div><div class="traffic-sparks">${sparkline(h.a,'rx')}${sparkline(h.b,'tx')}</div></div>`:'';
       return `<div class="opn-widget"><div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state active">API online</span></div><div class="metric-grid opn-metrics">${metrics.map(([k,v])=>`<div class="metric"><div class="metric-label">${esc(k)}</div><div class="metric-value">${esc(String(v))}</div></div>`).join('')}</div>${traffic}</div>`;
     }
     if (type === 'generic-api') {
@@ -416,26 +470,21 @@
   }
   const intersects = (a,b) => a.id !== b.id && a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
   function positionFree(candidate, widgets, ignoreId) { return !widgets.some(w => w.id !== ignoreId && intersects(candidate,w)); }
-  function findFree(candidate, widgets) {
-    if (positionFree(candidate, widgets, candidate.id)) return candidate;
-    for (let y=0;y<120;y++) for (let x=0;x<=12-candidate.w;x++) { const c={...candidate,x,y}; if(positionFree(c,widgets,candidate.id)) return c; }
-    return {...candidate,y:Math.max(0,...widgets.filter(w=>w.id!==candidate.id).map(w=>w.y+w.h))};
-  }
   function setWidgetStyle(el,w){el.style.setProperty('--x',w.x);el.style.setProperty('--y',w.y);el.style.setProperty('--w',w.w);el.style.setProperty('--h',w.h);}
+  function markLayoutDirty(){state.layoutDirty=true;const btn=$('#saveLayoutBtn');if(btn)btn.disabled=false;}
   function startDrag(ev, el, widget, grid) {
     ev.preventDefault(); ev.stopPropagation(); el.setPointerCapture?.(ev.pointerId); el.classList.add('dragging');
     const m=gridMetrics(grid), sx=ev.clientX, sy=ev.clientY, original={x:widget.x,y:widget.y};
     const move=e=>{const dx=Math.round((e.clientX-sx)/(m.col+m.gap));const dy=Math.round((e.clientY-sy)/m.unitY);widget.x=Math.max(0,Math.min(12-widget.w,original.x+dx));widget.y=Math.max(0,original.y+dy);setWidgetStyle(el,widget)};
-    const up=async e=>{el.classList.remove('dragging');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);const resolved=findFree(widget,state.boot.widgets);Object.assign(widget,resolved);setWidgetStyle(el,widget);await saveLayout();};
+    const up=e=>{el.classList.remove('dragging');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(!positionFree(widget,state.boot.widgets,widget.id)){widget.x=original.x;widget.y=original.y;setWidgetStyle(el,widget);toast('Dort ist bereits ein anderes Widget.','error');return;}if(widget.x!==original.x||widget.y!==original.y)markLayoutDirty();};
     window.addEventListener('pointermove',move);window.addEventListener('pointerup',up,{once:true});
   }
   function startResize(ev, el, widget, grid) {
     ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');const m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={w:widget.w,h:widget.h};
     const move=e=>{const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);const minW=widget.type==='app'?1:2;widget.w=Math.max(minW,Math.min(12-widget.x,original.w+dw));widget.h=Math.max(1,Math.min(8,original.h+dh));setWidgetStyle(el,widget);el.classList.toggle('app-widget-xs',widget.type==='app'&&widget.w<=1);el.classList.toggle('app-widget-sm',widget.type==='app'&&widget.w===2);el.classList.toggle('app-widget-lg',widget.type==='app'&&widget.w>=3)};
-    const up=async()=>{el.classList.remove('dragging');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(!positionFree(widget,state.boot.widgets,widget.id)){widget.w=original.w;widget.h=original.h;setWidgetStyle(el,widget);toast('Dort ist nicht genug Platz.','error');return;}await saveLayout();await loadOneWidget(widget,true);};
+    const up=()=>{el.classList.remove('dragging');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(!positionFree(widget,state.boot.widgets,widget.id)){widget.w=original.w;widget.h=original.h;setWidgetStyle(el,widget);toast('Dort ist nicht genug Platz.','error');return;}if(widget.w!==original.w||widget.h!==original.h){markLayoutDirty();loadOneWidget(widget,true);}};
     window.addEventListener('pointermove',move);window.addEventListener('pointerup',up,{once:true});
   }
-  async function saveLayout(){try{const d=await api('widgets/layout',{body:{widgets:(state.boot.widgets||[]).map(({id,x,y,w,h})=>({id,x,y,w,h}))}});state.boot.widgets=d.widgets;}catch(e){toast(e.message,'error')}}
 
   function openWidgetSettings(widget){
     if(widget.type==='app'){
@@ -550,11 +599,26 @@
     showModal(existing?'Verbindung bearbeiten':`${info.name} verbinden`,'Zugangsdaten werden serverseitig verschlüsselt gespeichert.',`<div class="field-row"><label>Name</label><input id="integrationName" value="${attr(existing?.name||info.name)}"></div>${fields}${widgetSection}`,`<button class="btn" data-close-modal>Abbrechen</button>${existing?`<button class="btn danger" id="deleteIntegration">Löschen</button>`:''}<button class="btn primary" id="saveIntegration">Speichern</button>`,modal=>{
       $('#saveIntegration',modal).onclick=async()=>{const payload={id:existing?.id,type,name:$('#integrationName',modal).value,secrets:{},config:{...(existing?.config||{})}};for(const f of info.fields||[]){const el=$(`[data-field="${CSS.escape(f.key)}"]`,modal);if(!el)continue;let value=f.type==='boolean'?el.checked:el.value;if(f.secret)payload.secrets[f.key]=value;else payload[f.key]=value;}for(const o of info.widget_options||[]){const el=$(`[data-widget-option="${CSS.escape(o.key)}"]`,modal);if(!el)continue;payload.config[o.key]=o.type==='boolean'?el.checked:(o.type==='number'?Number(el.value):el.value);}try{const d=await api('integrations/save',{body:payload});state.boot.integrations=d.integrations;closeModal();renderIntegrations();toast('Integration gespeichert.');}catch(e){toast(e.message,'error')}};
       $('#deleteIntegration',modal)?.addEventListener('click',async()=>{if(!confirm('Integration löschen?'))return;try{const d=await api('integrations/delete',{body:{id:existing.id}});state.boot.integrations=d.integrations;closeModal();renderIntegrations();toast('Integration gelöscht.');}catch(e){toast(e.message,'error')}});
+      if(type==='opnsense')loadOpnsenseInterfaces(modal,existing);
     });
   }
 
+  async function loadOpnsenseInterfaces(modal,existing){
+    const select=$('[data-widget-option="traffic_interface"]',modal);if(!select)return;
+    const saved=String(existing?.config?.traffic_interface||'auto');const current=saved.toLowerCase()==='wan'?'auto':saved;
+    if(!existing?.id){select.innerHTML='<option value="auto">Automatisch (WAN erkennen)</option>';select.disabled=true;select.title='Nach dem ersten Speichern werden die OPNsense-Interfaces automatisch geladen.';return;}
+    select.disabled=true;select.innerHTML=`<option value="${attr(current)}">Interfaces werden geladen…</option>`;
+    try{
+      const d=await api('integrations/interfaces',{body:{id:existing.id}});const interfaces=d.interfaces||[];
+      const options=[{id:'auto',label:'Automatisch (WAN erkennen)',address:''},...interfaces];
+      if(current!=='auto'&&!options.some(i=>String(i.id)===current))options.push({id:current,label:`${current} (gespeichert)`,address:''});
+      select.innerHTML=options.map(i=>{const label=i.id==='auto'?i.label:`${i.label||i.id} · ${i.id}${i.address?` · ${i.address}`:''}`;return `<option value="${attr(i.id)}" ${String(i.id)===current?'selected':''}>${esc(label)}</option>`}).join('');
+      select.disabled=false;
+    }catch(e){select.innerHTML=`<option value="${attr(current)}">${esc(current==='auto'?'Automatisch (WAN erkennen)':current)}</option>`;select.disabled=false;select.title=e.message;}
+  }
+
   function integrationFieldHtml(field,existing){const k=field.key;if(k==='base_url'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" type="url" value="${attr(existing?.base_url||'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}if(k==='username'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.username||'')}"></div>`;}if(k==='verify_tls'){const checked=existing?existing.verify_tls:(field.default!==false);return `<label class="setting-line"><span class="setting-copy"><strong>${esc(field.label)}</strong><p>Bei internen Self-Signed-Zertifikaten kann dies deaktiviert werden.</p></span><input data-field="${attr(k)}" type="checkbox" ${checked?'checked':''}></label>`;}if(field.secret){const has=existing?.has_secrets?.[k];return `<div class="field-row"><label>${esc(field.label)}${has?' · gespeichert':''}</label><input data-field="${attr(k)}" type="password" autocomplete="new-password" placeholder="${has?'Leer lassen = behalten':''}"></div>`;}return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.config?.[k]??field.default??'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}
-  function integrationWidgetOptionHtml(option,existing){const cfg=existing?.config||{},value=Object.prototype.hasOwnProperty.call(cfg,option.key)?cfg[option.key]:option.default;if(option.type==='boolean')return `<label class="setting-line compact"><span class="setting-copy"><strong>${esc(option.label)}</strong></span><input data-widget-option="${attr(option.key)}" type="checkbox" ${value!==false?'checked':''}></label>`;if(option.type==='select')return `<div class="field-row"><label>${esc(option.label)}</label><select data-widget-option="${attr(option.key)}">${(option.options||[]).map(o=>{const ov=typeof o==='object'?o.value:o,ol=typeof o==='object'?(o.label??o.value):o;return `<option value="${attr(ov)}" ${String(value)===String(ov)?'selected':''}>${esc(ol)}</option>`}).join('')}</select></div>`;if(option.type==='number')return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" type="number" min="${attr(option.min??'')}" max="${attr(option.max??'')}" step="${attr(option.step??1)}" value="${attr(value??'')}"></div>`;return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" value="${attr(value??'')}" placeholder="${attr(option.placeholder||'')}"></div>`;}
+  function integrationWidgetOptionHtml(option,existing){const cfg=existing?.config||{},value=Object.prototype.hasOwnProperty.call(cfg,option.key)?cfg[option.key]:option.default;if(option.type==='boolean')return `<label class="setting-line compact"><span class="setting-copy"><strong>${esc(option.label)}</strong></span><input data-widget-option="${attr(option.key)}" type="checkbox" ${value!==false?'checked':''}></label>`;if(option.type==='interface-select')return `<div class="field-row"><label>${esc(option.label)}</label><select data-widget-option="${attr(option.key)}"><option value="${attr(value||'auto')}">${esc(String(value||'auto'))}</option></select><small class="field-help">PenguLab erkennt die in OPNsense konfigurierten Interfaces automatisch.</small></div>`;if(option.type==='select')return `<div class="field-row"><label>${esc(option.label)}</label><select data-widget-option="${attr(option.key)}">${(option.options||[]).map(o=>{const ov=typeof o==='object'?o.value:o,ol=typeof o==='object'?(o.label??o.value):o;return `<option value="${attr(ov)}" ${String(value)===String(ov)?'selected':''}>${esc(ol)}</option>`}).join('')}</select></div>`;if(option.type==='number')return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" type="number" min="${attr(option.min??'')}" max="${attr(option.max??'')}" step="${attr(option.step??1)}" value="${attr(value??'')}"></div>`;return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" value="${attr(value??'')}" placeholder="${attr(option.placeholder||'')}"></div>`;}
 
   function renderHub() {
     const addons=state.boot.addons||[];
@@ -600,6 +664,6 @@
   function openGlobalSearch(){if($('#searchOverlay'))return;const overlay=document.createElement('div');overlay.id='searchOverlay';overlay.className='search-overlay';overlay.innerHTML=`<div class="command"><div class="command-input"><span>⌕</span><input id="commandSearch" placeholder="App, IP, Hostname, Integration…" autocomplete="off"><kbd>ESC</kbd></div><div class="command-results" id="commandResults"><div class="command-empty">Tippe zum Suchen…</div></div></div>`;document.body.appendChild(overlay);overlay.addEventListener('mousedown',e=>{if(e.target===overlay)overlay.remove()});const input=$('#commandSearch',overlay),results=$('#commandResults',overlay);let timer;input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(async()=>{const q=input.value.trim();if(!q){results.innerHTML='<div class="command-empty">Tippe zum Suchen…</div>';return;}try{const d=await api('search',{params:{q}});results.innerHTML=d.items.length?d.items.map(item=>`<button class="command-item" data-search-type="${attr(item.type)}" data-search-id="${attr(item.id||'')}" data-search-url="${attr(item.url||'')}" data-search-addon="${attr(item.addon||'')}"><span class="command-kind">${esc((item.type||'?').slice(0,2))}</span><span class="command-copy"><span class="command-title">${esc(item.title)}</span><span class="command-subtitle">${esc(item.subtitle||'')}</span></span></button>`).join(''):'<div class="command-empty">Nichts gefunden.</div>';$$('.command-item',results).forEach(b=>b.onclick=()=>activateSearchResult(b));}catch(e){results.innerHTML=`<div class="command-empty">${esc(e.message)}</div>`}},160)});input.focus();}
   function activateSearchResult(btn){const type=btn.dataset.searchType,url=btn.dataset.searchUrl;if(type==='app'&&url){window.open(url,'_blank','noopener');return;}$('#searchOverlay')?.remove();if(btn.dataset.searchAddon==='ipmanager'||['network','device'].includes(type)){location.href='?addon=ipmanager';return;}if(type==='integration'){location.hash='integrations';return;}location.hash='dashboard';}
 
-  window.addEventListener('hashchange',()=>{setViewFromHash();state.editMode=false;render();$('#sidebar')?.classList.remove('open')});
+  window.addEventListener('hashchange',()=>{if(state.editMode)discardLayoutEdit({renderAfter:false});setViewFromHash();render();$('#sidebar')?.classList.remove('open')});
   boot();
 })();

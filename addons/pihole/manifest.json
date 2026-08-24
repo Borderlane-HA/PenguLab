@@ -1,7 +1,7 @@
 {
   "id": "pihole",
   "name": "Pi-hole",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "category": "DNS",
   "author": "Borderlane-HA",
   "description": "Pi-hole v6 monitoring and protection controls through the official session-based API.",
@@ -61,6 +61,32 @@
         "label": "Schutz-Steuerung anzeigen",
         "type": "boolean",
         "default": true
+      },
+      {
+        "key": "show_recent_blocked",
+        "label": "Letzte blockierte Domains anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "recent_blocked_count",
+        "label": "Anzahl blockierter Domains",
+        "type": "select",
+        "default": "3",
+        "options": [
+          {
+            "value": "3",
+            "label": "3 Domains"
+          },
+          {
+            "value": "5",
+            "label": "5 Domains"
+          },
+          {
+            "value": "10",
+            "label": "10 Domains"
+          }
+        ]
       },
       {
         "key": "refresh_interval",

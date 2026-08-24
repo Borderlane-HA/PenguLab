@@ -156,6 +156,17 @@ try {
             $result = $integrations->test($id);
             json_response(['ok' => true, 'data' => $result, 'integrations' => $integrations->list()]);
 
+        case 'integrations/interfaces':
+            require_method('POST');
+            require_admin($auth);
+            $id = trim((string)(json_body()['id'] ?? ''));
+            $integration = $integrations->full($id);
+            if (!$integration || (string)($integration['type'] ?? '') !== 'opnsense') {
+                throw new RuntimeException('OPNsense integration not found.');
+            }
+            $result = $integrations->execute($id, 'summary');
+            json_response(['ok'=>true,'interfaces'=>is_array($result['interfaces'] ?? null) ? $result['interfaces'] : []]);
+
         case 'homeassistant/entities':
             require_method('POST');
             require_admin($auth);
@@ -485,21 +496,57 @@ function update_widget(Database $db, array $input): void
 
 function save_layout(Database $db, mixed $items): void
 {
-    if (!is_array($items)) return;
-    $types = [];
-    foreach ($db->widgets() as $widget) $types[(string)$widget['id']] = (string)$widget['type'];
+    if (!is_array($items)) throw new RuntimeException('Invalid dashboard layout.');
+
+    $existing = $db->widgets();
+    $byId = [];
+    foreach ($existing as $widget) $byId[(string)$widget['id']] = $widget;
+
+    // Apply the submitted draft to a complete in-memory layout first. This makes the
+    // save atomic and allows us to reject overlaps instead of silently moving widgets.
+    $layout = [];
+    foreach ($existing as $widget) {
+        $layout[(string)$widget['id']] = [
+            'id'=>(string)$widget['id'],
+            'type'=>(string)$widget['type'],
+            'x'=>(int)$widget['x'], 'y'=>(int)$widget['y'],
+            'w'=>(int)$widget['w'], 'h'=>(int)$widget['h'],
+        ];
+    }
+
+    $seen = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) continue;
+        $id = trim((string)($item['id'] ?? ''));
+        if ($id === '') continue;
+        if (!isset($layout[$id])) throw new RuntimeException('Dashboard contains an unknown widget.');
+        if (isset($seen[$id])) throw new RuntimeException('Dashboard contains a duplicate widget.');
+        $seen[$id] = true;
+
+        $minW = (($layout[$id]['type'] ?? '') === 'app') ? 1 : 2;
+        $w = max($minW, min(12, (int)($item['w'] ?? $layout[$id]['w'])));
+        $h = max(1, min(8, (int)($item['h'] ?? $layout[$id]['h'])));
+        $x = max(0, min(12-$w, (int)($item['x'] ?? $layout[$id]['x'])));
+        $y = max(0, (int)($item['y'] ?? $layout[$id]['y']));
+        $layout[$id] = array_merge($layout[$id], ['x'=>$x,'y'=>$y,'w'=>$w,'h'=>$h]);
+    }
+
+    $rows = array_values($layout);
+    for ($i=0, $count=count($rows); $i<$count; $i++) {
+        $a = $rows[$i];
+        for ($j=$i+1; $j<$count; $j++) {
+            $b = $rows[$j];
+            $overlap = $a['x'] < $b['x']+$b['w'] && $a['x']+$a['w'] > $b['x']
+                && $a['y'] < $b['y']+$b['h'] && $a['y']+$a['h'] > $b['y'];
+            if ($overlap) throw new RuntimeException('Dashboard layout contains overlapping widgets. Move the widgets apart and save again.');
+        }
+    }
+
     $stmt = $db->pdo()->prepare('UPDATE widgets SET x=:x,y=:y,w=:w,h=:h,updated_at=:updated WHERE id=:id');
-    $db->transaction(function() use ($items,$stmt,$types): void {
-        foreach ($items as $item) {
-            if (!is_array($item)) continue;
-            $id = trim((string)($item['id'] ?? ''));
-            if ($id === '') continue;
-            $minW = (($types[$id] ?? '') === 'app') ? 1 : 2;
-            $w = max($minW, min(12, (int)($item['w'] ?? 3)));
-            $h = max(1, min(8, (int)($item['h'] ?? 2)));
-            $x = max(0, min(12-$w, (int)($item['x'] ?? 0)));
-            $y = max(0, (int)($item['y'] ?? 0));
-            $stmt->execute(['x'=>$x,'y'=>$y,'w'=>$w,'h'=>$h,'updated'=>gmdate(DATE_ATOM),'id'=>$id]);
+    $now = gmdate(DATE_ATOM);
+    $db->transaction(function() use ($layout,$stmt,$now): void {
+        foreach ($layout as $item) {
+            $stmt->execute(['x'=>$item['x'],'y'=>$item['y'],'w'=>$item['w'],'h'=>$item['h'],'updated'=>$now,'id'=>$item['id']]);
         }
     });
 }
@@ -565,9 +612,22 @@ function persist_integration_widget_data(Database $db, array $integration, array
     if (in_array($type,['pihole','adguardhome'],true)) {
         $metric='dns'; $a=(float)($summary['queries']??0); $b=(float)($summary['blocked']??0);
     } elseif ($type==='opnsense' && is_array($summary['traffic']??null)) {
-        $metric='traffic'; $a=(float)($summary['traffic']['rx_bytes']??0); $b=(float)($summary['traffic']['tx_bytes']??0);
+        $rawA=$summary['traffic']['rx_bytes']??null; $rawB=$summary['traffic']['tx_bytes']??null;
+        if ($rawA!==null && $rawB!==null && is_numeric($rawA) && is_numeric($rawB)) {
+            $metric='traffic'; $a=(float)$rawA; $b=(float)$rawB;
+        }
     }
     if ($metric!=='' && $a!==null && $b!==null) {
+        // 2.0 could persist a false 0/0 OPNsense sample when the counter field names were
+        // not recognized. Drop that legacy series as soon as real counters arrive.
+        if ($metric==='traffic' && ($a>0 || $b>0)) {
+            $legacy=$db->pdo()->prepare('SELECT value_a,value_b FROM integration_metric_samples WHERE integration_id=:id AND metric=:metric ORDER BY sampled_at DESC LIMIT 1');
+            $legacy->execute(['id'=>$integrationId,'metric'=>$metric]);
+            $legacyRow=$legacy->fetch();
+            if (is_array($legacyRow) && (float)$legacyRow['value_a']===0.0 && (float)$legacyRow['value_b']===0.0) {
+                $db->pdo()->prepare('DELETE FROM integration_metric_samples WHERE integration_id=:id AND metric=:metric')->execute(['id'=>$integrationId,'metric'=>$metric]);
+            }
+        }
         $last=$db->pdo()->prepare('SELECT sampled_at FROM integration_metric_samples WHERE integration_id=:id AND metric=:metric ORDER BY sampled_at DESC LIMIT 1');
         $last->execute(['id'=>$integrationId,'metric'=>$metric]);
         $lastAt=(int)($last->fetchColumn()?:0);

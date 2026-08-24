@@ -101,6 +101,18 @@ final class IntegrationManager
             'updated' => $now,
         ]);
 
+        // A traffic graph is tied to the selected OPNsense interface. When that selection
+        // changes, discard the old counter series instead of mixing two interfaces.
+        if ($type === 'opnsense' && $existing) {
+            $oldTraffic = (string)(($existing['config']['traffic_interface'] ?? 'auto'));
+            $newTraffic = (string)(($config['traffic_interface'] ?? 'auto'));
+            if ($oldTraffic !== $newTraffic || (string)($existing['base_url'] ?? '') !== $baseUrl) {
+                $this->db->pdo()->prepare('DELETE FROM integration_metric_samples WHERE integration_id=:id AND metric=:metric')
+                    ->execute(['id'=>$id,'metric'=>'traffic']);
+                $this->db->pdo()->prepare('DELETE FROM integration_widget_cache WHERE integration_id=:id')->execute(['id'=>$id]);
+            }
+        }
+
         return $this->publicRow($this->row($id));
     }
 

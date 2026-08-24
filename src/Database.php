@@ -378,11 +378,11 @@ SQL;
                 ]);
                 $now = gmdate(DATE_ATOM);
                 $pdo->prepare('INSERT OR REPLACE INTO addons(id,version,enabled,installed_at,updated_at) VALUES(?,?,?,?,?)')
-                    ->execute(['ipmanager', '2.0.0', 1, $now, $now]);
+                    ->execute(['ipmanager', '2.1.0', 1, $now, $now]);
             } elseif ($legacyHasIpManagerShortcut) {
                 $now = gmdate(DATE_ATOM);
                 $pdo->prepare('INSERT OR IGNORE INTO addons(id,version,enabled,installed_at,updated_at) VALUES(?,?,?,?,?)')
-                    ->execute(['ipmanager', '2.0.0', 1, $now, $now]);
+                    ->execute(['ipmanager', '2.1.0', 1, $now, $now]);
             }
         });
 

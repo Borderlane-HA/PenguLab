@@ -9,6 +9,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     $user = (string)$integration['username'];
     $pass = (string)($integration['_secrets']['password'] ?? '');
     $opts = ['verify_tls' => $verify];
+    $config = is_array($integration['config'] ?? null) ? $integration['config'] : [];
     if ($user !== '' || $pass !== '') $opts['basic'] = $user . ':' . $pass;
 
     if (str_starts_with($mode, 'action:')) {
@@ -46,6 +47,40 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     }
     $queries = (int)($s['num_dns_queries'] ?? 0);
     $blocked = (int)($s['num_blocked_filtering'] ?? 0);
+
+    $recentBlocked = [];
+    $recentBlockedError = '';
+    if (!empty($config['show_recent_blocked'])) {
+        $count = max(1, min(10, (int)($config['recent_blocked_count'] ?? 3)));
+        try {
+            // response_status=blocked is retained by AdGuard Home for backwards compatibility.
+            // It keeps the payload small; PenguLab still handles the response defensively.
+            $queryLog = $http->request('GET', $base . '/control/querylog?limit=' . max(20, $count) . '&response_status=blocked', $opts + ['timeout'=>6]);
+            if ($queryLog['status'] >= 200 && $queryLog['status'] < 300 && is_array($queryLog['json'])) {
+                $rows = is_array($queryLog['json']['data'] ?? null) ? $queryLog['json']['data'] : [];
+                foreach ($rows as $row) {
+                    if (!is_array($row)) continue;
+                    $question = is_array($row['question'] ?? null) ? $row['question'] : [];
+                    $domain = trim((string)($question['host'] ?? $question['name'] ?? $row['domain'] ?? ''));
+                    if ($domain === '') continue;
+                    $client = trim((string)($row['client'] ?? ''));
+                    if (is_array($row['client_info'] ?? null) && !empty($row['client_info']['name'])) $client = trim((string)$row['client_info']['name']);
+                    $recentBlocked[] = [
+                        'domain' => $domain,
+                        'client' => $client,
+                        'time' => (string)($row['time'] ?? ''),
+                        'reason' => (string)($row['reason'] ?? ''),
+                    ];
+                    if (count($recentBlocked) >= $count) break;
+                }
+            } else {
+                $recentBlockedError = 'Query log returned HTTP ' . $queryLog['status'] . '.';
+            }
+        } catch (Throwable $e) {
+            $recentBlockedError = $e->getMessage();
+        }
+    }
+
     return [
         'service' => 'AdGuard Home',
         'status' => !empty($status['json']['running']) ? 'online' : 'offline',
@@ -56,5 +91,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         'blocked' => $blocked,
         'blocked_percent' => round($queries > 0 ? $blocked / $queries * 100 : 0, 1),
         'avg_processing_ms' => round(((float)($s['avg_processing_time'] ?? 0)) * 1000, 2),
+        'recent_blocked' => $recentBlocked,
+        'recent_blocked_error' => $recentBlockedError,
     ];
 };

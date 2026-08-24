@@ -1,5 +1,14 @@
 # PenguLab Roadmap
 
+## PenguLab 2.1 — dashboard & integration reliability
+
+- [x] deterministic draft/save/cancel dashboard layout editing
+- [x] server-side dashboard overlap validation
+- [x] generic OPNsense interface discovery and traffic selection
+- [x] current OPNsense statistics/counter parsing
+- [x] optional Pi-hole recent blocked domains
+- [x] optional AdGuard Home recent blocked domains
+
 ## PenguLab 2.0 — completed foundation
 
 - [x] SQLite core storage

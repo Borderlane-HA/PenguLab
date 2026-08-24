@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.1.0
+
+### Added
+- Added automatic OPNsense interface discovery for traffic widgets. Users select from their own configured interfaces instead of entering `wan`, `vtnet0`, `igb0`, VLAN or PPPoE device names manually.
+- Added an `Automatisch (WAN erkennen)` traffic option with explicit interface selection for multi-WAN and custom interface layouts.
+- Added optional recent blocked-domain lists to Pi-hole and AdGuard Home widgets with configurable 3, 5 or 10 entries.
+
+### Fixed
+- Fixed OPNsense traffic parsing for current `get_interface_statistics` responses under the `statistics` map and the `received-bytes` / `sent-bytes` counter names.
+- Fixed OPNsense widgets falsely rendering `0 bit/s` when traffic counters were missing or could not be parsed.
+- Fixed dashboard widgets occasionally moving after save. Dragging and resizing now use a local draft and only one atomic layout snapshot is written when `Speichern` is pressed.
+- Removed automatic top-left relocation for manually moved widgets. A colliding drop is rejected and the widget returns to its previous position.
+- Added server-side overlap validation so an invalid or stale layout cannot silently rearrange the dashboard.
+
+### Changed
+- Changing the selected OPNsense traffic interface resets only that integration's traffic history, preventing counters from two interfaces being mixed in one graph.
+- DNS recent-block data uses the same persistent widget cache as the rest of the integration summary, so it appears immediately after dashboard navigation or reload.
+
 ## 2.0.0
 
 ### Added

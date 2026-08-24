@@ -18,9 +18,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     $get = static function(string $path, bool $required = false) use ($http, $base, $opts): ?array {
         try {
             $result = $http->request('GET', $base . $path, $opts);
-            if ($result['status'] >= 200 && $result['status'] < 300 && is_array($result['json'])) {
-                return $result['json'];
-            }
+            if ($result['status'] >= 200 && $result['status'] < 300 && is_array($result['json'])) return $result['json'];
             if ($required) throw new RuntimeException('OPNsense endpoint ' . $path . ' returned HTTP ' . $result['status'] . '.');
         } catch (Throwable $e) {
             if ($required) throw $e;
@@ -34,13 +32,10 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         foreach (['rows','items','interfaces','data'] as $keyName) {
             if (isset($payload[$keyName]) && is_array($payload[$keyName])) {
                 $candidate = $payload[$keyName];
-                if (!array_is_list($candidate)) {
-                    $candidate = array_values(array_filter($candidate, 'is_array'));
-                }
+                if (!array_is_list($candidate)) $candidate = array_values(array_filter($candidate, 'is_array'));
                 return array_values(array_filter($candidate, 'is_array'));
             }
         }
-        // Some OPNsense endpoints return a keyed map of rows.
         $allArrays = array_values(array_filter($payload, 'is_array'));
         return count($allArrays) === count($payload) ? $allArrays : [];
     };
@@ -50,6 +45,15 @@ return static function(array $integration, HttpClient $http, string $mode='summa
             if (array_key_exists($k, $row) && !is_array($row[$k]) && $row[$k] !== '') return $row[$k];
         }
         return $default;
+    };
+
+    $num = static function(mixed $value): ?float {
+        if (is_int($value) || is_float($value)) return (float)$value;
+        if (is_string($value)) {
+            $clean = str_replace([',',' '], '', $value);
+            if (is_numeric($clean)) return (float)$clean;
+        }
+        return null;
     };
 
     if ($mode === 'arp') {
@@ -64,7 +68,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
                 'mac' => preg_match('/^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i', $mac) ? $mac : '',
                 'hostname' => trim((string)$scalar($row, ['hostname','host_name','name'], '')),
                 'vendor' => trim((string)$scalar($row, ['manufacturer','vendor'], '')),
-                'interface' => trim((string)$scalar($row, ['interface_name','interface','if'], '')),
+                'interface' => trim((string)$scalar($row, ['intf_description','interface_name','interface','intf','if'], '')),
             ];
         }
         return ['service'=>'OPNsense','status'=>'online','arp'=>$out];
@@ -74,45 +78,113 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     $systemInfo = $get('/api/diagnostics/system/system_information') ?? [];
     $memory = $get('/api/diagnostics/system/memory') ?? $get('/api/diagnostics/interface/get_memory_statistics') ?? [];
     $interfacePayload = $get('/api/diagnostics/interface/get_interface_statistics') ?? [];
+    $interfaceNames = $get('/api/diagnostics/interface/get_interface_names') ?? [];
     $gatewayPayload = $get('/api/routes/gateway/status') ?? [];
     $wireguardPayload = $get('/api/wireguard/service/status') ?? [];
 
-    $config = is_array($integration['config'] ?? null) ? $integration['config'] : [];
-    $wantedInterface = strtolower(trim((string)($config['traffic_interface'] ?? 'wan')));
-    $interfaceRows = $rows($interfacePayload);
-    $chosen = null;
-    foreach ($interfaceRows as $row) {
-        $name = strtolower((string)$scalar($row, ['name','interface','device','if'], ''));
-        $descr = strtolower((string)$scalar($row, ['description','descr','interface_name','label'], ''));
-        if ($wantedInterface !== '' && ($name === $wantedInterface || $descr === $wantedInterface || str_contains($name, $wantedInterface) || str_contains($descr, $wantedInterface))) {
-            $chosen = $row; break;
+    // OPNsense returns interface statistics as a keyed map under "statistics":
+    //   "[WAN] (vtnet0) / 10.0.0.2" => { name, received-bytes, sent-bytes, ... }
+    // Preserve that key because it contains the logical interface description.
+    $statMap = is_array($interfacePayload['statistics'] ?? null) ? $interfacePayload['statistics'] : [];
+    $statRows = [];
+    foreach ($statMap as $statKey => $row) {
+        if (!is_array($row)) continue;
+        $device = trim((string)($row['name'] ?? ''));
+        $label = '';
+        $addressFromKey = '';
+        if (preg_match('/^\[([^\]]+)\]\s+\(([^)]+)\)\s+\/\s+(.+)$/', (string)$statKey, $m)) {
+            $label = trim($m[1]);
+            if ($device === '') $device = trim($m[2]);
+            $addressFromKey = trim($m[3]);
+        } elseif (preg_match('/^\[([^\]]+)\]\s+\/\s+(.+)$/', (string)$statKey, $m)) {
+            $label = trim($m[1]);
+            $addressFromKey = trim($m[2]);
         }
+        if ($label === '' && $device !== '' && isset($interfaceNames[$device]) && is_scalar($interfaceNames[$device])) {
+            $label = trim((string)$interfaceNames[$device]);
+        }
+        if ($label === '') $label = $device;
+        $row['_stat_key'] = (string)$statKey;
+        $row['_device'] = $device;
+        $row['_label'] = $label;
+        $row['_address'] = trim((string)($row['address'] ?? $addressFromKey));
+        $statRows[] = $row;
     }
-    if (!$chosen) {
-        foreach ($interfaceRows as $row) {
-            $name = strtolower((string)$scalar($row, ['name','interface','device','if'], ''));
-            $descr = strtolower((string)$scalar($row, ['description','descr','interface_name','label'], ''));
-            if ($name === 'lo0' || str_contains($descr, 'loopback')) continue;
-            $chosen = $row; break;
+
+    // Older/future OPNsense variants may use a different outer shape. Keep a generic fallback.
+    if ($statRows === []) {
+        foreach ($rows($interfacePayload) as $row) {
+            $device = trim((string)$scalar($row, ['name','interface','device','if'], ''));
+            $label = trim((string)$scalar($row, ['description','descr','interface_name','label'], ''));
+            if ($label === '' && $device !== '' && isset($interfaceNames[$device]) && is_scalar($interfaceNames[$device])) $label = trim((string)$interfaceNames[$device]);
+            $row['_device'] = $device;
+            $row['_label'] = $label !== '' ? $label : $device;
+            $row['_address'] = trim((string)$scalar($row, ['address','ip','ip_address'], ''));
+            $statRows[] = $row;
         }
     }
 
-    $num = static function(mixed $value): ?float {
-        if (is_int($value) || is_float($value)) return (float)$value;
-        if (is_string($value)) {
-            $clean = str_replace([',',' '], '', $value);
-            if (is_numeric($clean)) return (float)$clean;
+    // Build one selectable item per real interface. Prefer an IP-address row over the link/MAC row,
+    // because OPNsense's per-address statistics contain the counters used by its diagnostics UI.
+    $byDevice = [];
+    foreach ($statRows as $row) {
+        $device = trim((string)($row['_device'] ?? ''));
+        if ($device === '' || $device === 'lo0') continue;
+        $address = trim((string)($row['_address'] ?? ''));
+        $isIp = filter_var(preg_replace('/%.+$/', '', $address), FILTER_VALIDATE_IP) !== false;
+        $score = $isIp ? (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) ? 3 : 2) : 1;
+        if (!isset($byDevice[$device]) || $score > $byDevice[$device]['_score']) {
+            $row['_score'] = $score;
+            $byDevice[$device] = $row;
         }
-        return null;
-    };
+    }
+
+    // Include configured interfaces even when no statistics row exists yet.
+    foreach ($interfaceNames as $device => $label) {
+        if (!is_string($device) || !is_scalar($label) || $device === 'lo0' || isset($byDevice[$device])) continue;
+        $byDevice[$device] = ['_device'=>$device,'_label'=>(string)$label,'_address'=>'','_score'=>0];
+    }
+
+    $interfaces = [];
+    foreach ($byDevice as $device => $row) {
+        $label = trim((string)($row['_label'] ?? $device));
+        $interfaces[] = [
+            'id' => $device,
+            'label' => $label !== '' ? $label : $device,
+            'address' => trim((string)($row['_address'] ?? '')),
+        ];
+    }
+    usort($interfaces, static fn(array $a, array $b): int => strnatcasecmp($a['label'] . $a['id'], $b['label'] . $b['id']));
+
+    $config = is_array($integration['config'] ?? null) ? $integration['config'] : [];
+    $wanted = strtolower(trim((string)($config['traffic_interface'] ?? 'auto')));
+    $chosen = null;
+
+    // "auto" resolves the interface whose logical OPNsense description is WAN. This works regardless
+    // of whether the physical device is vtnet0, igb0, pppoe0, a VLAN, a LAGG, etc.
+    if ($wanted === '' || $wanted === 'auto' || $wanted === 'wan') {
+        foreach ($byDevice as $row) {
+            if (strcasecmp(trim((string)($row['_label'] ?? '')), 'WAN') === 0) { $chosen = $row; break; }
+        }
+    }
+    if (!$chosen && $wanted !== '' && $wanted !== 'auto') {
+        foreach ($byDevice as $row) {
+            $device = strtolower(trim((string)($row['_device'] ?? '')));
+            $label = strtolower(trim((string)($row['_label'] ?? '')));
+            if ($device === $wanted || $label === $wanted) { $chosen = $row; break; }
+        }
+    }
+    if (!$chosen && $byDevice !== []) $chosen = reset($byDevice) ?: null;
 
     $traffic = null;
     if (is_array($chosen)) {
-        $rx = $num($scalar($chosen, ['ibytes','rxbytes','rx_bytes','bytes_received','inbytes','in_bytes']));
-        $tx = $num($scalar($chosen, ['obytes','txbytes','tx_bytes','bytes_sent','outbytes','out_bytes']));
+        $rx = $num($scalar($chosen, ['received-bytes','ibytes','rxbytes','rx_bytes','bytes_received','inbytes','in_bytes']));
+        $tx = $num($scalar($chosen, ['sent-bytes','obytes','txbytes','tx_bytes','bytes_sent','outbytes','out_bytes']));
+        // Missing counters are not zero traffic. Keep them null so the frontend doesn't draw a false flat line.
         $traffic = [
-            'interface' => (string)$scalar($chosen, ['name','interface','device','if'], $wantedInterface ?: 'WAN'),
-            'label' => (string)$scalar($chosen, ['description','descr','interface_name','label'], ''),
+            'interface' => (string)($chosen['_device'] ?? ''),
+            'label' => (string)($chosen['_label'] ?? ''),
+            'address' => (string)($chosen['_address'] ?? ''),
             'rx_bytes' => $rx,
             'tx_bytes' => $tx,
         ];
@@ -134,7 +206,6 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         ];
     }
 
-    $memoryPercent = null;
     $findMemory = null;
     $findMemory = static function(array $payload) use ($num, &$findMemory): ?float {
         foreach (['percent','used_percent','usage','memory_percent'] as $keyName) {
@@ -170,6 +241,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         'system'=>$system,
         'system_info'=>$systemInfo,
         'memory_percent'=>$memoryPercent !== null ? round($memoryPercent, 1) : null,
+        'interfaces'=>$interfaces,
         'traffic'=>$traffic,
         'gateway'=>$gateway,
         'wireguard'=>$wireguard,

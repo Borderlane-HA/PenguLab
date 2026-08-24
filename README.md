@@ -1,12 +1,20 @@
-# PenguLab 2.0
+# PenguLab 2.1
 
 **PenguLab is a self-hosted Homelab Control Center.**
 
-Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a flexible dashboard, service integrations and installable PenguHub packages in one lightweight self-hosted interface.
+Instead of being only a start page, PenguLab 2.1 combines fast app shortcuts, a flexible dashboard, service integrations and installable PenguHub packages in one lightweight self-hosted interface.
 
-> **Stable release:** `2.0.0` — the first stable PenguLab Control Center release. Existing PenguLab 1.x data is migrated automatically, but a backup is still recommended before upgrading.
+> **Stable release:** `2.1.0`. Existing PenguLab 2.0 installations upgrade in place and keep the same SQLite data volume. A backup of `data/` is still recommended before upgrading.
 
-## What is new in 2.0
+## What is new in 2.1
+
+- OPNsense traffic widgets discover the firewall's configured interfaces automatically and support explicit selection for multi-WAN, VLAN, PPPoE and other interface layouts
+- current OPNsense `statistics` responses and `received-bytes` / `sent-bytes` counters are parsed correctly
+- Pi-hole and AdGuard Home widgets can optionally show the latest 3, 5 or 10 blocked DNS domains
+- dashboard layout editing is transactional: move/resize freely, then choose **Speichern** or **Abbrechen**
+- widget collisions no longer cause a tile to jump to another location; invalid drops are rejected in place
+
+## PenguLab 2.0 foundation
 
 - Flexible dashboard with resizable and draggable widgets
 - Collapsible sidebar remembered per PenguLab user; when hidden, only a compact reopen button remains
@@ -17,13 +25,13 @@ Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a 
 - Automatic server-side favicon discovery for app shortcuts, including a local-only self-signed TLS fallback
 - Per-widget app layout: automatic, icon above text, icon beside text, or icon-only
 - Per-integration widget-content switches for DNS and OPNsense cards
-- OPNsense gateway/RAM/WireGuard metrics plus a sampled WAN traffic mini-graph
+- OPNsense gateway/RAM/WireGuard metrics plus a sampled traffic mini-graph with automatic interface discovery
 - persistent server-side widget snapshots/history: cached values render immediately after reload or navigation, then refresh live
 - configurable integration refresh interval (5–60 seconds)
 - Home Assistant PenguHub integration for selected sensors, switches, lights and covers
 - Compact Home Assistant entity widgets with optional icons, controls and cached last-known values
 - Per-network discovery in IP Manager with Nmap + optional OPNsense ARP enrichment
-- Pi-hole and AdGuard Home protection controls directly from dashboard widgets
+- Pi-hole and AdGuard Home protection controls plus optional recent blocked-domain lists directly from dashboard widgets
 - Separate **Apps**, **Integrations**, **PenguHub** and **Settings** areas
 - Global search / command palette with `Ctrl + K`
 - SQLite instead of using one JSON file as the application database
@@ -37,7 +45,7 @@ Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a 
 
 ## PenguHub
 
-PenguHub is the extension layer of PenguLab. PenguLab 2.0 ships with a small curated local catalog:
+PenguHub is the extension layer of PenguLab. PenguLab 2.1 ships with a small curated local catalog:
 
 | Package | Type | Purpose |
 | --- | --- | --- |
@@ -243,11 +251,11 @@ For alpha/beta testing, create a **second LXC** instead of changing the producti
 
 This leaves the stable LXC on `ghcr.io/borderlane-ha/pengulab:latest` and creates the test LXC from `:prerelease`. Use a different CTID/hostname and preferably temporary or copied data.
 
-To pin an LXC to the stable 2.0.0 release instead:
+To pin an LXC to the stable 2.1.0 release instead:
 
 ```bash
 pct enter <TEST-CTID>
-pengulabctl version 2.0.0
+pengulabctl version 2.1.0
 pengulabctl update
 ```
 

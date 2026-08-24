@@ -248,3 +248,13 @@ body.sidebar-collapsed .sidebar-open-btn{display:grid}
 .ha-picker-copy small{margin-top:2px;color:var(--muted);font-size:8px}
 .ha-picker-domain{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--soft);padding:3px 5px;border-radius:999px;background:var(--surface-2)}
 @media(max-width:760px){.ha-entity-grid{grid-template-columns:1fr}.ha-picker-options span{width:100%;margin-left:0}}
+
+/* 2.1 DNS query-log preview */
+.recent-blocked{margin-top:7px;padding:7px 9px;border-radius:12px;background:var(--surface-2);min-width:0}
+.recent-blocked-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:8px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.recent-blocked-head small{font-size:7px;text-transform:none;letter-spacing:0;font-weight:650;color:var(--danger,#d45b5b)}
+.recent-blocked-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:2px 0;border-top:1px solid color-mix(in srgb,var(--border) 55%,transparent);font-size:9px}
+.recent-blocked-row:first-of-type{border-top:0}
+.recent-blocked-domain{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:650}
+.recent-blocked-time,.recent-blocked-empty{color:var(--muted);font-size:8px}
+.dns-widget:has(.recent-blocked){overflow:auto;padding-right:2px}
