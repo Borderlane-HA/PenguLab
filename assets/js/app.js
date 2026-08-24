@@ -12,6 +12,7 @@
     appCategory: 'all',
     appView: localStorage.getItem('pengulab-app-view') || 'compact',
     widgetRefreshTimers: new Map(),
+    metricHistory: new Map(),
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -132,6 +133,9 @@
       e.stopPropagation(); if (!confirm('Widget vom Dashboard entfernen?')) return;
       try { const d = await api('widgets/delete', {body:{id:btn.dataset.id}}); state.boot.widgets = d.widgets; renderDashboard(); } catch(err){ toast(err.message,'error'); }
     }));
+    $$('.widget-settings', appRoot).forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation(); const widget=(state.boot.widgets||[]).find(w=>w.id===btn.dataset.id); if(widget) openWidgetSettings(widget);
+    }));
     if (state.editMode) enableGridInteractions();
     loadWidgetData();
   }
@@ -140,8 +144,9 @@
     const title = widget.title || widgetTitle(widget);
     const typeClass = `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
     const sizeClass = widget.type === 'app' ? (widget.w <= 1 ? 'app-widget-xs' : widget.w === 2 ? 'app-widget-sm' : 'app-widget-lg') : '';
+    const settingsButton = widget.type === 'app' ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Darstellung">⚙</button>` : '';
     return `<section class="widget ${typeClass} ${sizeClass}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2}">
-      <div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu"><button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button></div></div>
+      <div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button></div></div>
       <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
     </section>`;
   }
@@ -164,7 +169,7 @@
     for (const widget of state.boot.widgets || []) {
       loadOneWidget(widget);
       if (['integration-summary','rss','ipmanager-summary'].includes(widget.type)) {
-        const timer = setInterval(() => loadOneWidget(widget, true), widget.type === 'rss' ? 300000 : 60000);
+        const timer = setInterval(() => loadOneWidget(widget, true), widget.type === 'rss' ? 300000 : (widget.type === 'integration-summary' ? 30000 : 60000));
         state.widgetRefreshTimers.set(widget.id, timer);
       }
     }
@@ -200,7 +205,9 @@
       const app = data.app;
       if (!app) { body.innerHTML = '<div class="widget-error">App wurde entfernt.</div>'; return; }
       const size = widget.w <= 1 ? 'xs' : widget.w === 2 ? 'sm' : 'lg';
-      body.innerHTML = `<a class="app-widget app-widget-${size}" href="${attr(app.url)}" target="_blank" rel="noopener" title="${attr(app.name)} öffnen">${appIcon(app)}<div class="app-widget-copy"><div class="app-widget-name">${esc(app.name)}</div><div class="app-widget-meta">${esc(app.category || hostOf(app.url))}</div></div><span class="app-widget-open" aria-hidden="true">↗</span></a>`;
+      const requested = widget.config?.layout || 'auto';
+      const layout = requested === 'auto' ? (widget.w <= 1 ? 'icon' : (widget.h >= 2 && widget.w <= 3 ? 'vertical' : 'horizontal')) : requested;
+      body.innerHTML = `<a class="app-widget app-widget-${size} app-layout-${attr(layout)}" href="${attr(app.url)}" target="_blank" rel="noopener" title="${attr(app.name)} öffnen">${appIcon(app)}<div class="app-widget-copy"><div class="app-widget-name">${esc(app.name)}</div><div class="app-widget-meta">${esc(app.category || hostOf(app.url))}</div></div><span class="app-widget-open" aria-hidden="true">↗</span></a>`;
       return;
     }
     if (data.kind === 'ipmanager') {
@@ -213,6 +220,7 @@
       return;
     }
     if (data.kind === 'integration') {
+      updateMetricHistory(data.integration || {}, data.summary || {});
       body.innerHTML = integrationSummaryHtml(data.integration || {}, data.summary || {});
       bindIntegrationActions(body, widget, data.integration || {});
       return;
@@ -220,16 +228,43 @@
     body.innerHTML = `<pre style="font-size:10px;overflow:auto">${esc(JSON.stringify(data,null,2))}</pre>`;
   }
 
+  function integrationOption(integration,key,def=true){const cfg=integration?.config||{};return Object.prototype.hasOwnProperty.call(cfg,key)?Boolean(cfg[key]):def;}
+  function historyBucket(key){if(!state.metricHistory.has(key))state.metricHistory.set(key,{last:null,a:[],b:[]});return state.metricHistory.get(key);}
+  function updateMetricHistory(integration,summary){
+    const type=integration.type||'', now=Date.now();
+    if(type==='pihole'||type==='adguardhome'){
+      const h=historyBucket(`${integration.id}:dns`), current={t:now,a:Number(summary.queries||0),b:Number(summary.blocked||0)};
+      if(h.last){const mins=Math.max((current.t-h.last.t)/60000,.1);h.a.push(Math.max(0,(current.a-h.last.a)/mins));h.b.push(Math.max(0,(current.b-h.last.b)/mins));if(h.a.length>30)h.a.shift();if(h.b.length>30)h.b.shift();}h.last=current;
+    }
+    if(type==='opnsense'&&summary.traffic){
+      const rx=Number(summary.traffic.rx_bytes),tx=Number(summary.traffic.tx_bytes);if(Number.isFinite(rx)&&Number.isFinite(tx)){
+        const h=historyBucket(`${integration.id}:traffic`),current={t:now,a:rx,b:tx};
+        if(h.last){const sec=Math.max((current.t-h.last.t)/1000,1);h.a.push(Math.max(0,(current.a-h.last.a)/sec));h.b.push(Math.max(0,(current.b-h.last.b)/sec));if(h.a.length>30)h.a.shift();if(h.b.length>30)h.b.shift();}h.last=current;
+      }
+    }
+  }
+  function sparkline(values,cls=''){const nums=(values||[]).filter(Number.isFinite);if(nums.length<2)return `<div class="sparkline-empty">Sammelt Daten…</div>`;const min=Math.min(...nums),max=Math.max(...nums),range=Math.max(max-min,1);const pts=nums.map((v,i)=>`${(i/(nums.length-1))*100},${28-((v-min)/range)*24}`).join(' ');return `<svg class="sparkline ${attr(cls)}" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" vector-effect="non-scaling-stroke"/></svg>`;}
+  function fmtRate(v){const n=Number(v||0);if(n>=125000000)return `${fmt(n*8/1e9)} Gbit/s`;if(n>=125000)return `${fmt(n*8/1e6)} Mbit/s`;if(n>=125)return `${fmt(n*8/1e3)} kbit/s`;return `${fmt(n*8)} bit/s`;}
+
   function integrationSummaryHtml(integration, summary) {
     const type = integration.type || '';
     if (type === 'pihole' || type === 'adguardhome') {
       const active = summary.protection !== false;
-      return `<div class="dns-widget"><div class="service-heading"><span class="status-dot ${active?'':'paused'}"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state ${active?'active':'paused'}">${active?'Schutz aktiv':'Schutz pausiert'}</span></div><div class="metric-grid dns-metrics"><div class="metric"><div class="metric-label">Queries</div><div class="metric-value">${fmt(summary.queries)}</div></div><div class="metric"><div class="metric-label">Blocked</div><div class="metric-value">${fmt(summary.blocked_percent)}%</div></div><div class="metric"><div class="metric-label">Status</div><div class="metric-value">${active ? 'Active' : 'Paused'}</div></div><div class="metric"><div class="metric-label">Clients</div><div class="metric-value">${type==='pihole'?fmt(summary.clients):'—'}</div></div></div><div class="service-actions"><button class="service-action ${active?'':'primary'}" data-integration-action="protection_enable" ${active?'disabled':''}>Fortsetzen</button><button class="service-action" data-integration-action="protection_pause_300">5 Min Pause</button><button class="service-action danger" data-integration-action="protection_disable" ${!active?'disabled':''}>Anhalten</button></div></div>`;
+      const showStats=integrationOption(integration,'show_stats',true),showGraph=integrationOption(integration,'show_graph',true),showControls=integrationOption(integration,'show_controls',true),showClients=type==='pihole'&&integrationOption(integration,'show_clients',true);
+      const h=historyBucket(`${integration.id}:dns`);const graph=showGraph?`<div class="mini-graph-grid"><div><div class="mini-graph-label"><span>Queries/min</span><strong>${h.a.length?fmt(h.a.at(-1)):''}</strong></div>${sparkline(h.a,'queries')}</div><div><div class="mini-graph-label"><span>Blocked/min</span><strong>${h.b.length?fmt(h.b.at(-1)):''}</strong></div>${sparkline(h.b,'blocked')}</div></div>`:'';
+      const metrics=showStats?`<div class="metric-grid dns-metrics"><div class="metric"><div class="metric-label">Queries</div><div class="metric-value">${fmt(summary.queries)}</div></div><div class="metric"><div class="metric-label">Blocked</div><div class="metric-value">${fmt(summary.blocked_percent)}%</div></div><div class="metric"><div class="metric-label">Status</div><div class="metric-value">${active ? 'Active' : 'Paused'}</div></div>${showClients?`<div class="metric"><div class="metric-label">Clients</div><div class="metric-value">${fmt(summary.clients)}</div></div>`:''}</div>`:'';
+      const controls=showControls?`<div class="service-actions"><button class="service-action ${active?'':'primary'}" data-integration-action="protection_enable" ${active?'disabled':''}>Fortsetzen</button><button class="service-action" data-integration-action="protection_pause_300">5 Min Pause</button><button class="service-action danger" data-integration-action="protection_disable" ${!active?'disabled':''}>Anhalten</button></div>`:'';
+      return `<div class="dns-widget"><div class="service-heading"><span class="status-dot ${active?'':'paused'}"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state ${active?'active':'paused'}">${active?'Schutz aktiv':'Schutz pausiert'}</span></div>${metrics}${graph}${controls}</div>`;
     }
     if (type === 'opnsense') {
-      const sys = summary.system || {};
-      const statusText = typeof sys.status === 'string' ? sys.status : (sys.status === 'ok' ? 'OK' : 'API online');
-      return `<div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span></div><div class="metric-grid"><div class="metric"><div class="metric-label">Firewall</div><div class="metric-value">Online</div></div><div class="metric"><div class="metric-label">System</div><div class="metric-value">${esc(String(statusText).slice(0,20))}</div></div></div>`;
+      const cfg=integration.config||{}, metrics=[];
+      if(integrationOption(integration,'show_system',true))metrics.push(['Firewall','Online']);
+      if(integrationOption(integration,'show_gateway',true)&&summary.gateway){const g=summary.gateway;metrics.push(['Gateway',g.status||'unknown']);if(g.delay)metrics.push(['Latenz',String(g.delay)]);}
+      if(integrationOption(integration,'show_memory',true)&&summary.memory_percent!==null&&summary.memory_percent!==undefined)metrics.push(['RAM',`${fmt(summary.memory_percent)}%`]);
+      if(integrationOption(integration,'show_wireguard',false)&&summary.wireguard?.available)metrics.push(['WireGuard',summary.wireguard.running?'Online':'Offline']);
+      const trafficEnabled=integrationOption(integration,'show_traffic',true)&&summary.traffic;const h=historyBucket(`${integration.id}:traffic`);const rx=h.a.length?h.a.at(-1):0,tx=h.b.length?h.b.at(-1):0;
+      const traffic=trafficEnabled?`<div class="opn-traffic"><div class="mini-graph-label"><span>${esc(summary.traffic.label||summary.traffic.interface||cfg.traffic_interface||'WAN')} Traffic</span><strong>↓ ${fmtRate(rx)} · ↑ ${fmtRate(tx)}</strong></div><div class="traffic-sparks">${sparkline(h.a,'rx')}${sparkline(h.b,'tx')}</div></div>`:'';
+      return `<div class="opn-widget"><div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state active">API online</span></div><div class="metric-grid opn-metrics">${metrics.map(([k,v])=>`<div class="metric"><div class="metric-label">${esc(k)}</div><div class="metric-value">${esc(String(v))}</div></div>`).join('')}</div>${traffic}</div>`;
     }
     if (type === 'generic-api') {
       const values = Object.entries(summary.values || {}).slice(0,4);
@@ -295,6 +330,12 @@
   }
   async function saveLayout(){try{const d=await api('widgets/layout',{body:{widgets:(state.boot.widgets||[]).map(({id,x,y,w,h})=>({id,x,y,w,h}))}});state.boot.widgets=d.widgets;}catch(e){toast(e.message,'error')}}
 
+  function openWidgetSettings(widget){
+    if(widget.type!=='app')return;
+    const current=widget.config?.layout||'auto';
+    showModal('App-Widget Darstellung','Die Darstellung gilt nur für dieses Dashboard-Widget.',`<div class="field-row"><label>Layout</label><select id="appWidgetLayout"><option value="auto" ${current==='auto'?'selected':''}>Automatisch nach Größe</option><option value="vertical" ${current==='vertical'?'selected':''}>Icon oben · Text darunter</option><option value="horizontal" ${current==='horizontal'?'selected':''}>Icon links · Text daneben</option><option value="icon" ${current==='icon'?'selected':''}>Nur Icon</option></select></div><div class="widget-layout-preview"><span>1×1 wird bei Bedarf automatisch sehr kompakt dargestellt.</span></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetSettings">Speichern</button>`,modal=>{$('#saveWidgetSettings',modal).onclick=async()=>{const config={...(widget.config||{}),layout:$('#appWidgetLayout',modal).value};try{const d=await api('widgets/update',{body:{id:widget.id,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Darstellung gespeichert.');}catch(e){toast(e.message,'error')}}});
+  }
+
   function openWidgetPicker() {
     const integrations = state.boot.integrations || []; const apps = state.boot.apps || []; const catalog = state.boot.widgetCatalog || [];
     const installedTypes = new Set(catalog.map(c=>c.type));
@@ -319,7 +360,7 @@
     }
     if (key === 'app') {
       const opts=(state.boot.apps||[]).map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('');
-      showModal('App Shortcut','Wähle eine vorhandene App.',`<div class="field-row"><label>App</label><select id="widgetAppId">${opts}</select></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value;closeModal();createWidget({type:'app',config:{app_id:id},w:2,h:1});}});return;
+      showModal('App Shortcut','Wähle App und Darstellung.',`<div class="form-grid"><div class="field-row full"><label>App</label><select id="widgetAppId">${opts}</select></div><div class="field-row full"><label>Darstellung</label><select id="widgetAppLayout"><option value="vertical">Icon oben · Text darunter</option><option value="horizontal">Icon links · Text daneben</option><option value="auto">Automatisch nach Größe</option><option value="icon">Nur Icon</option></select></div></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value,layout=$('#widgetAppLayout',modal).value;closeModal();createWidget({type:'app',config:{app_id:id,layout},w:2,h:2});}});return;
     }
     if (key === 'note') {
       showModal('Notiz','Kurzer Text für dein Dashboard.',`<div class="field-row"><label>Titel (optional)</label><input id="widgetTitle"></div><div class="field-row"><label>Text</label><textarea id="widgetText" placeholder="Was willst du im Blick behalten?"></textarea></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,text=$('#widgetText',modal).value;closeModal();createWidget({type:'note',title,config:{text},w:3,h:2});}});return;
@@ -354,7 +395,7 @@
     $$('[data-app-category]').forEach(b=>b.onclick=()=>{state.appCategory=b.dataset.appCategory;renderApps()});
     $$('[data-app-view]').forEach(b=>b.onclick=()=>{state.appView=b.dataset.appView;localStorage.setItem('pengulab-app-view',state.appView);renderApps()});
     $$('[data-edit-app]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();openAppModal(all.find(a=>a.id===b.dataset.editApp))});
-    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget},w:2,h:1})});
+    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget,layout:'vertical'},w:2,h:2})});
   }
 
   function openAppModal(app=null) {
@@ -390,13 +431,16 @@
   function openIntegrationModal(existing=null, forcedType='') {
     const type=forcedType||existing?.type;const info=(state.boot.integrationTypes||[]).find(t=>t.type===type);if(!info){toast('Connector nicht installiert.','error');return;}
     const fields=(info.fields||[]).map(f=>integrationFieldHtml(f,existing)).join('');
-    showModal(existing?'Verbindung bearbeiten':`${info.name} verbinden`,'Zugangsdaten werden serverseitig verschlüsselt gespeichert.',`<div class="field-row"><label>Name</label><input id="integrationName" value="${attr(existing?.name||info.name)}"></div>${fields}`,`<button class="btn" data-close-modal>Abbrechen</button>${existing?`<button class="btn danger" id="deleteIntegration">Löschen</button>`:''}<button class="btn primary" id="saveIntegration">Speichern</button>`,modal=>{
-      $('#saveIntegration',modal).onclick=async()=>{const payload={id:existing?.id,type,name:$('#integrationName',modal).value,secrets:{}};for(const f of info.fields||[]){const el=$(`[data-field="${CSS.escape(f.key)}"]`,modal);if(!el)continue;let value=f.type==='boolean'?el.checked:el.value;if(f.secret)payload.secrets[f.key]=value;else payload[f.key]=value;}try{const d=await api('integrations/save',{body:payload});state.boot.integrations=d.integrations;closeModal();renderIntegrations();toast('Integration gespeichert.');}catch(e){toast(e.message,'error')}};
+    const widgetOptions=(info.widget_options||[]).map(o=>integrationWidgetOptionHtml(o,existing)).join('');
+    const widgetSection=widgetOptions?`<div class="modal-section-title">Widget-Inhalte</div><div class="integration-widget-options">${widgetOptions}</div>`:'';
+    showModal(existing?'Verbindung bearbeiten':`${info.name} verbinden`,'Zugangsdaten werden serverseitig verschlüsselt gespeichert.',`<div class="field-row"><label>Name</label><input id="integrationName" value="${attr(existing?.name||info.name)}"></div>${fields}${widgetSection}`,`<button class="btn" data-close-modal>Abbrechen</button>${existing?`<button class="btn danger" id="deleteIntegration">Löschen</button>`:''}<button class="btn primary" id="saveIntegration">Speichern</button>`,modal=>{
+      $('#saveIntegration',modal).onclick=async()=>{const payload={id:existing?.id,type,name:$('#integrationName',modal).value,secrets:{},config:{...(existing?.config||{})}};for(const f of info.fields||[]){const el=$(`[data-field="${CSS.escape(f.key)}"]`,modal);if(!el)continue;let value=f.type==='boolean'?el.checked:el.value;if(f.secret)payload.secrets[f.key]=value;else payload[f.key]=value;}for(const o of info.widget_options||[]){const el=$(`[data-widget-option="${CSS.escape(o.key)}"]`,modal);if(!el)continue;payload.config[o.key]=o.type==='boolean'?el.checked:el.value;}try{const d=await api('integrations/save',{body:payload});state.boot.integrations=d.integrations;closeModal();renderIntegrations();toast('Integration gespeichert.');}catch(e){toast(e.message,'error')}};
       $('#deleteIntegration',modal)?.addEventListener('click',async()=>{if(!confirm('Integration löschen?'))return;try{const d=await api('integrations/delete',{body:{id:existing.id}});state.boot.integrations=d.integrations;closeModal();renderIntegrations();toast('Integration gelöscht.');}catch(e){toast(e.message,'error')}});
     });
   }
 
-  function integrationFieldHtml(field,existing){const k=field.key;if(k==='base_url'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" type="url" value="${attr(existing?.base_url||'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}if(k==='username'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.username||'')}"></div>`;}if(k==='verify_tls'){const checked=existing?existing.verify_tls:(field.default!==false);return `<label class="setting-line"><span class="setting-copy"><strong>${esc(field.label)}</strong><p>Bei internen Self-Signed-Zertifikaten kann dies deaktiviert werden.</p></span><input data-field="${attr(k)}" type="checkbox" ${checked?'checked':''}></label>`;}if(field.secret){const has=existing?.has_secrets?.[k];return `<div class="field-row"><label>${esc(field.label)}${has?' · gespeichert':''}</label><input data-field="${attr(k)}" type="password" autocomplete="new-password" placeholder="${has?'Leer lassen = behalten':''}"></div>`;}return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value=""></div>`;}
+  function integrationFieldHtml(field,existing){const k=field.key;if(k==='base_url'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" type="url" value="${attr(existing?.base_url||'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}if(k==='username'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.username||'')}"></div>`;}if(k==='verify_tls'){const checked=existing?existing.verify_tls:(field.default!==false);return `<label class="setting-line"><span class="setting-copy"><strong>${esc(field.label)}</strong><p>Bei internen Self-Signed-Zertifikaten kann dies deaktiviert werden.</p></span><input data-field="${attr(k)}" type="checkbox" ${checked?'checked':''}></label>`;}if(field.secret){const has=existing?.has_secrets?.[k];return `<div class="field-row"><label>${esc(field.label)}${has?' · gespeichert':''}</label><input data-field="${attr(k)}" type="password" autocomplete="new-password" placeholder="${has?'Leer lassen = behalten':''}"></div>`;}return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.config?.[k]??field.default??'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}
+  function integrationWidgetOptionHtml(option,existing){const cfg=existing?.config||{},value=Object.prototype.hasOwnProperty.call(cfg,option.key)?cfg[option.key]:option.default;if(option.type==='boolean')return `<label class="setting-line compact"><span class="setting-copy"><strong>${esc(option.label)}</strong></span><input data-widget-option="${attr(option.key)}" type="checkbox" ${value!==false?'checked':''}></label>`;return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" value="${attr(value??'')}" placeholder="${attr(option.placeholder||'')}"></div>`;}
 
   function renderHub() {
     const addons=state.boot.addons||[];

@@ -1,7 +1,7 @@
 {
   "id": "adguardhome",
   "name": "AdGuard Home",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "category": "DNS",
   "author": "Borderlane-HA",
   "description": "AdGuard Home monitoring and protection controls using its documented /control API.",
@@ -38,6 +38,26 @@
       {
         "key": "verify_tls",
         "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "widget_options": [
+      {
+        "key": "show_stats",
+        "label": "DNS-Statistiken anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_graph",
+        "label": "Mini-Graph für DNS-Aktivität anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_controls",
+        "label": "Schutz-Steuerung anzeigen",
         "type": "boolean",
         "default": true
       }

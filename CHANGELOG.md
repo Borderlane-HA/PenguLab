@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.0.0-alpha.5
+
+### Added
+- Added per-network IP Manager discovery with an active Nmap scan and optional OPNsense ARP enrichment.
+- Added one-click import of discovered devices into the normal device editor with IP, hostname and MAC prefilled.
+- Added per-device gateway, DNS and DHCP-reservation documentation.
+- Added configurable integration widget contents. Pi-hole/AdGuard can toggle stats, graph, clients and controls; OPNsense can toggle system, gateway, RAM, traffic graph and WireGuard.
+- Added a sampled OPNsense WAN traffic mini-graph and gateway/RAM status metrics.
+- Added per-app-widget layout selection: automatic, icon above text, icon beside text, or icon-only.
+- Added Proxmox local/web-console root auto-login for new appliance installs; SSH service is disabled by the installer.
+
+### Changed
+- OPNsense connector now uses the diagnostics ARP/interface APIs and gateway/WireGuard status APIs when the API user has matching privileges.
+- IP Manager device table now shows gateway, DNS and DHCP-reservation state.
+- New app widgets default to a vertical icon-over-text layout.
+- Docker image now includes `nmap` for network discovery.
+
 
 ## 2.0.0-alpha.4
 

@@ -1,25 +1,101 @@
 {
   "id": "opnsense",
   "name": "OPNsense",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "category": "Network",
   "author": "Borderlane-HA",
-  "description": "Read-only OPNsense health monitoring through API key/secret authentication.",
+  "description": "Read-only OPNsense health, gateway, traffic, WireGuard and ARP monitoring through API key/secret authentication.",
   "icon": "firewall",
   "connector": "connector.php",
-  "permissions": ["network.http", "secrets.read"],
+  "permissions": [
+    "network.http",
+    "secrets.read",
+    "network.discovery"
+  ],
   "integration": {
     "type": "opnsense",
     "name": "OPNsense",
     "description": "OPNsense Firewall",
     "fields": [
-      {"key": "base_url", "label": "URL", "type": "url", "placeholder": "https://opnsense.local", "required": true},
-      {"key": "api_key", "label": "API key", "type": "password", "secret": true, "required": true},
-      {"key": "api_secret", "label": "API secret", "type": "password", "secret": true, "required": true},
-      {"key": "verify_tls", "label": "Verify TLS certificate", "type": "boolean", "default": true}
+      {
+        "key": "base_url",
+        "label": "URL",
+        "type": "url",
+        "placeholder": "https://opnsense.local",
+        "required": true
+      },
+      {
+        "key": "api_key",
+        "label": "API key",
+        "type": "password",
+        "secret": true,
+        "required": true
+      },
+      {
+        "key": "api_secret",
+        "label": "API secret",
+        "type": "password",
+        "secret": true,
+        "required": true
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "widget_options": [
+      {
+        "key": "show_system",
+        "label": "Systemstatus anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_gateway",
+        "label": "Gateway-Status und Latenz anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_memory",
+        "label": "Speicher anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_traffic",
+        "label": "WAN-Traffic mit Mini-Graph anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_wireguard",
+        "label": "WireGuard-Status anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "traffic_interface",
+        "label": "Traffic-Interface (optional)",
+        "type": "text",
+        "default": "wan",
+        "placeholder": "wan oder Interface-Name"
+      }
     ]
   },
   "widgets": [
-    {"type": "integration-summary", "integrationType": "opnsense", "name": "OPNsense Health", "description": "System status and basic health.", "icon": "firewall", "defaultSize": [4, 2]}
+    {
+      "type": "integration-summary",
+      "integrationType": "opnsense",
+      "name": "OPNsense Health",
+      "description": "System, Gateway, memory, WireGuard and live WAN traffic.",
+      "icon": "firewall",
+      "defaultSize": [
+        5,
+        3
+      ]
+    }
   ]
 }

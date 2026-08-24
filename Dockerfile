@@ -9,6 +9,7 @@ RUN apk add --no-cache \
       oniguruma-dev \
       sqlite-dev \
       su-exec \
+      nmap \
     && docker-php-ext-install -j"$(nproc)" \
       curl \
       mbstring \

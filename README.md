@@ -4,7 +4,7 @@
 
 Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a flexible dashboard, service integrations and installable PenguHub packages in one lightweight self-hosted interface.
 
-> **Status:** `2.0.0-alpha.4` — this branch is an architectural preview and migration build. Back up your existing `apps.json` before testing an upgrade.
+> **Status:** `2.0.0-alpha.5` — this branch is an architectural preview and migration build. Back up your existing `apps.json` before testing an upgrade.
 
 ## What is new in 2.0
 
@@ -12,6 +12,10 @@ Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a 
 - Adaptive app shortcuts from compact 1×1 tiles to larger cards
 - High-density app library with search, category chips and compact/detail views
 - Automatic server-side favicon discovery for app shortcuts
+- Per-widget app layout: automatic, icon above text, icon beside text, or icon-only
+- Per-integration widget-content switches for DNS and OPNsense cards
+- OPNsense gateway/RAM/WireGuard metrics plus a sampled WAN traffic mini-graph
+- Per-network discovery in IP Manager with Nmap + optional OPNsense ARP enrichment
 - Pi-hole and AdGuard Home protection controls directly from dashboard widgets
 - Separate **Apps**, **Integrations**, **PenguHub** and **Settings** areas
 - Global search / command palette with `Ctrl + K`
@@ -50,9 +54,13 @@ Its UI has been redesigned around the things you actually use:
 - only assigned/documented addresses are listed
 - search by IP, hostname or MAC
 - suggest a free address automatically
-- distinguish Static, Reservation and observed DHCP addresses
+- distinguish Static and DHCP/observed addresses, with DHCP reservation documented as a separate flag
 - show used/free capacity instead of rendering every empty IP in a subnet
 - optionally add an IP Manager summary widget to the main dashboard
+- scan an individual network for active devices
+- enrich scan results with OPNsense ARP neighbors when that integration has the required API privilege
+- import a discovered host with one click into the normal device form
+- document gateway, DNS and whether the device has a DHCP reservation
 
 The data model also keeps a `source` field, so a future OPNsense/Kea sync can distinguish imported data from PenguLab documentation.
 
@@ -77,7 +85,9 @@ Browser
 
 Secrets are encrypted in SQLite and are not included in normal JSON exports.
 
-Pi-hole and AdGuard Home widgets can optionally perform a small, explicit set of control actions: **resume protection**, **pause for 5 minutes**, and **pause indefinitely**. These actions are proxied through PenguLab; credentials remain server-side. OPNsense stays read-only in the current alpha.
+Pi-hole and AdGuard Home widgets can optionally perform a small, explicit set of control actions: **resume protection**, **pause for 5 minutes**, and **pause indefinitely**. These actions are proxied through PenguLab; credentials remain server-side. OPNsense stays read-only in the current alpha. Its widget can selectively show gateway health, RAM, WireGuard and a sampled traffic graph; these options are configured on the integration itself.
+
+For OPNsense discovery/traffic features, keep the API account read-only and grant only the pages you need. In current OPNsense builds the ARP endpoints are covered by **Diagnostics: ARP Table** and interface statistics by **Diagnostics: Netstat**. Optional endpoints that the API account cannot access are skipped instead of breaking the whole widget.
 
 ## Release channels
 
@@ -87,9 +97,9 @@ PenguLab uses separate Docker channels so test builds cannot replace the product
 | --- | --- | --- |
 | Stable GitHub release | `latest` | Production |
 | GitHub pre-release | `prerelease` | Alpha / beta / RC testing |
-| Every release | exact release tag, e.g. `2.0.0-alpha.4` | Pinning / reproducible tests |
+| Every release | exact release tag, e.g. `2.0.0-alpha.5` | Pinning / reproducible tests |
 
-A GitHub **pre-release never updates `latest`**. Publishing `2.0.0-alpha.4` as a pre-release therefore publishes both `:2.0.0-alpha.4` and `:prerelease`, while the last stable build remains on `:latest`.
+A GitHub **pre-release never updates `latest`**. Publishing `2.0.0-alpha.5` as a pre-release therefore publishes both `:2.0.0-alpha.5` and `:prerelease`, while the last stable build remains on `:latest`.
 
 > **Note for `2.0.0-alpha.1`:** the first alpha workflow still tagged every published release as `latest`. If that workflow already ran, re-publish the last stable source (for example `1.0.3`) with the workflow's manual **stable** channel once. The corrected workflow in alpha.2 prevents this for future pre-releases.
 
@@ -131,8 +141,8 @@ http://YOURDOCKERHOST:19961
 ### Testing this alpha from the source tree
 
 ```bash
-docker build -t pengulab:2.0-alpha.3 .
-docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0-alpha.3
+docker build -t pengulab:2.0-alpha.5 .
+docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0-alpha.5
 ```
 
 ## Proxmox VE LXC
@@ -158,6 +168,14 @@ Defaults are deliberately small: 2 CPU cores, 1024 MiB RAM, 512 MiB swap and 8 G
 
 The LXC is created **unprivileged** and enables Proxmox `nesting=1,keyctl=1` because Docker inside an unprivileged container needs the additional container features. This is intentionally limited to the dedicated PenguLab LXC.
 
+For appliance-style administration the installer enables **root auto-login only on the Proxmox local/web console**. It does not create an SSH user and disables the SSH service if the Debian template contains one. Access therefore remains behind Proxmox authentication or `pct enter`.
+
+For an existing PenguLab 2.0 test LXC, apply the same console policy once from the Proxmox host:
+
+```bash
+bash scripts/proxmox-console-autologin.sh <CTID>
+```
+
 ### Safely testing a pre-release on Proxmox
 
 For alpha/beta testing, create a **second LXC** instead of changing the production container. In the installer choose:
@@ -172,7 +190,7 @@ To pin the test LXC to this exact pre-release instead:
 
 ```bash
 pct enter <TEST-CTID>
-pengulabctl version 2.0.0-alpha.4
+pengulabctl version 2.0.0-alpha.5
 pengulabctl update
 ```
 
@@ -262,6 +280,7 @@ PenguLab 2.0 requires:
 - SimpleXML (`simplexml`)
 - Sodium (`sodium`)
 - Multibyte String (`mbstring`)
+- `nmap` for IP Manager active network discovery
 - write permission for the configured data directory
 
 Set `PENGULAB_DATA_DIR` if your writable data directory is not `./data`.

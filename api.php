@@ -282,7 +282,7 @@ function save_app(Database $db, array $input): array
     $stmt->execute(compact('id','name','url','description','category','image','position','created') + ['updated' => $now]);
 
     if (!$existing && !empty($input['add_to_dashboard'])) {
-        create_widget($db, null, ['type' => 'app', 'config' => ['app_id' => $id], 'w' => 2, 'h' => 1]);
+        create_widget($db, null, ['type' => 'app', 'config' => ['app_id' => $id, 'layout' => 'vertical'], 'w' => 2, 'h' => 2]);
     }
 
     $stmt = $db->pdo()->prepare('SELECT * FROM apps WHERE id=:id');

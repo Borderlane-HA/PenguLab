@@ -20,8 +20,8 @@
 ## Alpha 2 — dashboard polish
 
 - [ ] dashboard layout presets and multiple dashboards
-- [ ] richer service-specific widgets and charts
-- [ ] widget configuration editor
+- [x] richer service-specific widgets and charts (first DNS/OPNsense pass)
+- [x] widget/integration display configuration (first pass)
 - [ ] mobile dashboard editing improvements
 - [ ] service status aggregation and last-refresh controls
 - [ ] localization pass for all new 2.0 UI strings
@@ -29,11 +29,11 @@
 
 ## Alpha 3 — Network intelligence
 
-- [ ] OPNsense interface discovery
+- [x] OPNsense interface/ARP discovery foundation
 - [ ] Kea subnet/reservation import
 - [ ] IP Manager source/reconciliation view
-- [ ] duplicate IP/MAC warnings
-- [ ] subnet utilization visualization
+- [ ] duplicate IP/MAC warnings and scan reconciliation
+- [x] subnet utilization visualization
 - [ ] optional read-only periodic sync
 
 ## Beta — PenguHub repository

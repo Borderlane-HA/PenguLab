@@ -1,7 +1,7 @@
 {
   "id": "pihole",
   "name": "Pi-hole",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "category": "DNS",
   "author": "Borderlane-HA",
   "description": "Pi-hole v6 monitoring and protection controls through the official session-based API.",
@@ -33,6 +33,32 @@
       {
         "key": "verify_tls",
         "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "widget_options": [
+      {
+        "key": "show_stats",
+        "label": "DNS-Statistiken anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_graph",
+        "label": "Mini-Graph für DNS-Aktivität anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_clients",
+        "label": "Aktive Clients anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_controls",
+        "label": "Schutz-Steuerung anzeigen",
         "type": "boolean",
         "default": true
       }

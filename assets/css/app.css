@@ -89,3 +89,76 @@ html[data-theme="dark"]{--bg:#11141b;--surface:#191d26;--surface-2:#1e232d;--sur
 .dns-metrics .metric-label{font-size:8px}
 .dns-metrics .metric-value{font-size:14px;margin-top:2px}
 @media(max-width:980px){.dns-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* PenguLab 2.0 alpha.5: selectable app layouts, integration graphs/options and IP discovery */
+.widget-type-app .app-layout-vertical{flex-direction:column;justify-content:center;text-align:center;gap:8px;padding:5px}
+.widget-type-app .app-layout-vertical .app-widget-copy{width:100%;text-align:center}
+.widget-type-app .app-layout-vertical .app-widget-name{font-size:13px;white-space:normal;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.widget-type-app .app-layout-vertical .app-widget-meta{font-size:9px;margin-top:3px}
+.widget-type-app .app-layout-vertical .app-widget-open{display:none}
+.widget-type-app .app-layout-vertical .app-icon{width:52px;height:52px;flex-basis:52px}
+.widget-type-app .app-layout-horizontal{flex-direction:row}
+.widget-type-app .app-layout-icon{justify-content:center;gap:0}
+.widget-type-app .app-layout-icon .app-widget-copy,.widget-type-app .app-layout-icon .app-widget-open{display:none!important}
+.widget-type-app .app-layout-icon .app-icon{width:56px;height:56px;flex-basis:56px}
+.widget-type-app.app-widget-xs .app-layout-vertical .app-widget-copy{display:none}
+.widget-layout-preview{padding:10px 12px;border:1px dashed var(--border-strong);border-radius:11px;background:var(--surface-2);font-size:10px;color:var(--muted)}
+
+.modal-section-title{margin:18px 0 8px;padding-top:14px;border-top:1px solid var(--border);font-size:10px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+.integration-widget-options{display:grid;gap:2px;margin-bottom:12px}
+.integration-widget-options .setting-line.compact{padding:8px 0}
+.integration-widget-options .setting-line.compact .setting-copy strong{font-size:11px}
+.integration-widget-options .field-row{margin-bottom:8px}
+
+.opn-widget{height:100%;display:flex;flex-direction:column;min-height:0}
+.opn-widget .service-heading{margin-bottom:7px}
+.opn-metrics{height:auto;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));align-content:start;gap:6px}
+.opn-metrics .metric{padding:7px 9px}
+.opn-metrics .metric-label{font-size:8px}
+.opn-metrics .metric-value{font-size:14px;margin-top:2px}
+.opn-traffic{margin-top:7px;padding:7px 9px;background:var(--surface-2);border-radius:12px;min-height:58px;overflow:hidden}
+.mini-graph-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:7px 0 2px}
+.mini-graph-grid>div{padding:6px 8px;border-radius:11px;background:var(--surface-2);min-width:0;overflow:hidden}
+.mini-graph-label{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:8px;font-weight:760;white-space:nowrap}
+.mini-graph-label strong{color:var(--text);font-size:9px;overflow:hidden;text-overflow:ellipsis}
+.sparkline{display:block;width:100%;height:28px;margin-top:4px;overflow:visible}
+.sparkline polyline{stroke:var(--primary);stroke-width:1.6}
+.sparkline.blocked polyline{stroke:var(--danger)}
+.sparkline.rx polyline{stroke:var(--primary)}
+.sparkline.tx polyline{stroke:var(--success)}
+.sparkline-empty{height:28px;margin-top:4px;display:flex;align-items:center;color:var(--soft);font-size:8px}
+.traffic-sparks{position:relative;height:30px;margin-top:2px}
+.traffic-sparks .sparkline{position:absolute;inset:0;width:100%;height:30px}
+
+.ipm-scan-panel{margin:13px 0 17px;padding:12px;border:1px solid color-mix(in srgb,var(--primary) 22%,var(--border));background:color-mix(in srgb,var(--primary-soft) 42%,var(--surface));border-radius:15px}
+.ipm-scan-head{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.ipm-scan-head h3{margin:0;font-size:13px}
+.ipm-scan-head span{display:block;margin-top:3px;color:var(--muted);font-size:9px}
+.ipm-scan-head .btn{margin-left:auto}
+.ipm-scan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:7px}
+.scan-device{position:relative;display:flex;align-items:center;gap:8px;min-width:0;padding:9px 40px 9px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.scan-device.documented{opacity:.66;padding-right:92px}
+.scan-device-main{display:block;min-width:0;flex:1}
+.scan-device-main strong,.scan-device-main span,.scan-device-main small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scan-device-main strong{font-size:11px}
+.scan-device-main span{font-size:9px;color:var(--muted);margin-top:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.scan-device-main small{font-size:8px;color:var(--soft);margin-top:2px}
+.scan-source{font-size:8px;color:var(--primary);font-weight:750;border-radius:999px;background:var(--primary-soft);padding:3px 6px;white-space:nowrap}
+.scan-add{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:0;border-radius:8px;background:var(--primary);color:white;font-size:17px;line-height:1;cursor:pointer}
+.scan-add:hover{filter:brightness(1.05)}
+.scan-added{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:8px;color:var(--success);font-weight:780;white-space:nowrap}
+.scan-empty{grid-column:1/-1;padding:15px;text-align:center;color:var(--muted);font-size:10px}
+.scan-warnings{display:grid;gap:4px;margin:0 0 8px}
+.scan-warnings>div{padding:6px 8px;border-radius:9px;background:color-mix(in srgb,var(--warning) 10%,transparent);color:var(--warning);font-size:9px}
+.reservation-pill{display:inline-block;margin-left:4px;padding:4px 6px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:8px;font-weight:760;white-space:nowrap}
+.ipm-table{min-width:1050px}
+
+@media(max-width:980px){
+  .mini-graph-grid{grid-template-columns:1fr}
+  .opn-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+  .ipm-scan-grid{grid-template-columns:1fr}
+  .ipm-scan-head{align-items:flex-start;flex-wrap:wrap}
+  .ipm-scan-head .btn{margin-left:0}
+}

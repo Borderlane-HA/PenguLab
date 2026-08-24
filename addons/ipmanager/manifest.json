@@ -1,21 +1,27 @@
 {
   "id": "ipmanager",
   "name": "IP Manager",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "category": "Network",
   "author": "Borderlane-HA",
-  "description": "Simple network and IP documentation without giant empty address tables.",
+  "description": "Network/IP documentation with active discovery, OPNsense ARP enrichment and one-click device import.",
   "icon": "network",
   "entrypoint": "page.php",
   "api": "api.php",
-  "permissions": ["storage.addon"],
+  "permissions": [
+    "storage.addon",
+    "network.discovery"
+  ],
   "widgets": [
     {
       "type": "ipmanager-summary",
       "name": "IP Manager Summary",
       "description": "Networks, devices and address usage at a glance.",
       "icon": "network",
-      "defaultSize": [4, 2]
+      "defaultSize": [
+        4,
+        2
+      ]
     }
   ]
 }

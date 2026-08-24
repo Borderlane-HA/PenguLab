@@ -21,4 +21,4 @@ window.IPM_CONFIG = {
   csrf: <?= json_encode((string)$penguLab['csrf'], JSON_UNESCAPED_SLASHES) ?>
 };
 </script>
-<script src="addons/ipmanager/assets/ipmanager.js?v=2.0.0" defer></script>
+<script src="addons/ipmanager/assets/ipmanager.js?v=<?= htmlspecialchars(rawurlencode((string)($penguLab['version'] ?? 'dev'))) ?>" defer></script>

@@ -38,6 +38,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ipm_device_ip ON ipm_devices(network_id, i
 CREATE INDEX IF NOT EXISTS idx_ipm_device_host ON ipm_devices(hostname);
 SQL);
 
+// Schema upgrades are additive so existing PenguLab 2.0 IP Manager data remains intact.
+$columns = [];
+foreach ($pdo->query("PRAGMA table_info(ipm_devices)")->fetchAll() as $column) $columns[(string)$column['name']] = true;
+if (!isset($columns['gateway'])) $pdo->exec("ALTER TABLE ipm_devices ADD COLUMN gateway TEXT NOT NULL DEFAULT ''");
+if (!isset($columns['dns_json'])) $pdo->exec("ALTER TABLE ipm_devices ADD COLUMN dns_json TEXT NOT NULL DEFAULT '[]'");
+if (!isset($columns['dhcp_reservation'])) $pdo->exec("ALTER TABLE ipm_devices ADD COLUMN dhcp_reservation INTEGER NOT NULL DEFAULT 0");
+$pdo->exec("UPDATE ipm_devices SET dhcp_reservation=1 WHERE type='reservation' AND dhcp_reservation=0");
+
 $stmt = $pdo->prepare("SELECT value FROM addon_kv WHERE addon_id='ipmanager' AND key='legacy_payload'");
 $stmt->execute();
 $legacyJson = $stmt->fetchColumn();

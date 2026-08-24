@@ -137,6 +137,38 @@ install_runtime() {
   '
 }
 
+configure_console_autologin() {
+  local ctid="$1"
+  info "Enabling Proxmox web-console auto-login (local console only)..."
+  pct exec "$ctid" -- bash -lc '
+    set -e
+    mkdir -p /etc/systemd/system/console-getty.service.d
+    cat > /etc/systemd/system/console-getty.service.d/autologin.conf <<"EOF"
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud 115200,57600,38400,9600 - $TERM
+EOF
+    mkdir -p /etc/systemd/system/container-getty@1.service.d
+    cat > /etc/systemd/system/container-getty@1.service.d/autologin.conf <<"EOF"
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud 115200,57600,38400,9600 %I $TERM
+EOF
+    cat > /etc/profile.d/pengulab-console.sh <<"EOF"
+if [ -t 1 ] && [ "$(id -u)" = "0" ]; then
+  printf "\nPenguLab LXC\n  pengulabctl status   Show status\n  pengulabctl update   Update current channel\n  pengulabctl logs     Follow logs\n\n"
+fi
+EOF
+    chmod 0644 /etc/profile.d/pengulab-console.sh
+    # PenguLab management is intentionally local through Proxmox Console/pct.
+    # Do not expose an SSH login from this dedicated appliance container.
+    systemctl disable --now ssh.service sshd.service 2>/dev/null || true
+    systemctl daemon-reload
+    systemctl restart console-getty.service 2>/dev/null || true
+    systemctl restart container-getty@1.service 2>/dev/null || true
+  '
+}
+
 install_pengulabctl() {
   local ctid="$1" tmp
   tmp="$(mktemp)"
@@ -264,7 +296,7 @@ Usage:
   pengulabctl update
   pengulabctl channel stable
   pengulabctl channel prerelease
-  pengulabctl version 2.0.0-alpha.4
+  pengulabctl version 2.0.0-alpha.5
   pengulabctl backup [target.tar.gz]
   pengulabctl logs
   pengulabctl restart
@@ -340,7 +372,7 @@ main() {
     1) tag="latest"; channel_label="Stable" ;;
     2) tag="prerelease"; channel_label="Pre-release" ;;
     3)
-      prompt tag "Exact Docker release tag (e.g. 2.0.0-alpha.4)" "2.0.0-alpha.4"
+      prompt tag "Exact Docker release tag (e.g. 2.0.0-alpha.5)" "2.0.0-alpha.5"
       validate_tag "$tag"
       channel_label="Pinned: $tag"
       ;;
@@ -433,6 +465,7 @@ main() {
 
   wait_for_container "$ctid"
   install_runtime "$ctid"
+  configure_console_autologin "$ctid"
   install_pengulabctl "$ctid"
   configure_pengulab "$ctid" "$tag"
 
@@ -449,6 +482,7 @@ main() {
   fi
   echo ""
   echo "Management commands inside the LXC:"
+  echo "  Proxmox Web Console: automatic local root login (SSH service is disabled by this script)"
   echo "  pct enter $ctid"
   echo "  pengulabctl status"
   echo "  pengulabctl update"
