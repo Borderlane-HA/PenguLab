@@ -226,9 +226,30 @@ CREATE TABLE IF NOT EXISTS integration_metric_samples (
     FOREIGN KEY(integration_id) REFERENCES integrations(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_integration_metric_samples_lookup ON integration_metric_samples(integration_id, metric, sampled_at DESC);
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    permissions_json TEXT NOT NULL DEFAULT '{}',
+    preferences_json TEXT NOT NULL DEFAULT '{}',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS remember_tokens (
+    selector TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_remember_tokens_user ON remember_tokens(user_id);
 SQL;
         $this->pdo->exec($sql);
-        $this->setMeta('schema_version', '2');
+        $this->setMeta('schema_version', '3');
     }
 
     private function ensureDefaults(): void

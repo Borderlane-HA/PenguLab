@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use PenguLab\AddonManager;
+use PenguLab\Auth;
 use PenguLab\Database;
 use PenguLab\IntegrationManager;
 use PenguLab\Secrets;
@@ -38,6 +39,7 @@ $db = new Database($dataDir, __DIR__);
 $secrets = new Secrets($dataDir);
 $addons = new AddonManager($db, __DIR__ . '/addons');
 $integrations = new IntegrationManager($db, $addons, $secrets);
+$auth = new Auth($db);
 $version = trim((string)@file_get_contents(__DIR__ . '/VERSION')) ?: 'dev';
 
 return [
@@ -46,6 +48,7 @@ return [
     'secrets' => $secrets,
     'addons' => $addons,
     'integrations' => $integrations,
+    'auth' => $auth,
     'csrf' => $_SESSION['pengulab_csrf'],
     'root' => __DIR__,
     'dataDir' => $dataDir,

@@ -12,12 +12,17 @@ try {
     $db = $ctx['db'];
     $addons = $ctx['addons'];
     $integrations = $ctx['integrations'];
+    $auth = $ctx['auth'];
 } catch (\Throwable $e) {
     json_response(['ok' => false, 'error' => $e->getMessage()], 500);
 }
 
 $route = trim((string)($_GET['route'] ?? 'bootstrap'), '/');
 $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+
+if (!$auth->check()) {
+    json_response(['ok'=>false,'error'=>'Authentication required.'], 401);
+}
 
 if ($method !== 'GET') {
     $csrf = (string)($_SERVER['HTTP_X_PENGULAB_CSRF'] ?? '');
@@ -38,12 +43,14 @@ try {
 
         case 'apps/save':
             require_method('POST');
+            require_admin($auth);
             $input = json_body();
             $app = save_app($db, $input);
             json_response(['ok' => true, 'app' => $app, 'apps' => $db->apps(), 'widgets' => $db->widgets()]);
 
         case 'apps/favicon':
             require_method('POST');
+            require_admin($auth);
             $input = json_body();
             $url = clean_url((string)($input['url'] ?? ''));
             $verifyTls = !array_key_exists('verify_tls', $input) || (bool)$input['verify_tls'];
@@ -52,13 +59,15 @@ try {
 
         case 'apps/delete':
             require_method('POST');
+            require_admin($auth);
             delete_app($db, (string)(json_body()['id'] ?? ''));
             json_response(['ok' => true, 'apps' => $db->apps(), 'widgets' => $db->widgets()]);
 
         case 'settings/save':
             require_method('POST');
+            require_admin($auth);
             $input = json_body();
-            foreach (['theme', 'language', 'sidebar_compact', 'dashboard_title'] as $key) {
+            foreach (['theme', 'language', 'dashboard_title'] as $key) {
                 if (array_key_exists($key, $input)) {
                     $value = $input[$key];
                     if ($key === 'theme' && !in_array($value, ['system', 'light', 'dark'], true)) continue;
@@ -70,33 +79,39 @@ try {
 
         case 'widgets/create':
             require_method('POST');
+            require_admin($auth);
             $widget = create_widget($db, $addons, json_body());
             json_response(['ok' => true, 'widget' => $widget, 'widgets' => $db->widgets()]);
 
         case 'widgets/update':
             require_method('POST');
+            require_admin($auth);
             update_widget($db, json_body());
             json_response(['ok' => true, 'widgets' => $db->widgets()]);
 
         case 'widgets/delete':
             require_method('POST');
+            require_admin($auth);
             $id = trim((string)(json_body()['id'] ?? ''));
             $db->pdo()->prepare('DELETE FROM widgets WHERE id = :id')->execute(['id' => $id]);
             json_response(['ok' => true, 'widgets' => $db->widgets()]);
 
         case 'widgets/layout':
             require_method('POST');
+            require_admin($auth);
             save_layout($db, json_body()['widgets'] ?? []);
             json_response(['ok' => true, 'widgets' => $db->widgets()]);
 
         case 'widgets/data':
             require_method('GET');
             $id = trim((string)($_GET['id'] ?? ''));
+            require_widget_access($db, $auth, $id);
             $cachedOnly = !empty($_GET['cached']);
             json_response(['ok' => true, 'data' => widget_data($db, $addons, $integrations, $id, $cachedOnly)]);
 
         case 'addons/install':
             require_method('POST');
+            require_admin($auth);
             $id = trim((string)(json_body()['id'] ?? ''));
             $manifest = $addons->manifest($id);
             $addons->install($id);
@@ -110,6 +125,7 @@ try {
 
         case 'addons/uninstall':
             require_method('POST');
+            require_admin($auth);
             $id = trim((string)(json_body()['id'] ?? ''));
             $manifest = $addons->manifest($id);
             $addons->uninstall($id);
@@ -123,16 +139,19 @@ try {
 
         case 'integrations/save':
             require_method('POST');
+            require_admin($auth);
             $saved = $integrations->save(json_body());
             json_response(['ok' => true, 'integration' => $saved, 'integrations' => $integrations->list()]);
 
         case 'integrations/delete':
             require_method('POST');
+            require_admin($auth);
             $integrations->delete(trim((string)(json_body()['id'] ?? '')));
             json_response(['ok' => true, 'integrations' => $integrations->list()]);
 
         case 'integrations/test':
             require_method('POST');
+            require_admin($auth);
             $id = trim((string)(json_body()['id'] ?? ''));
             $result = $integrations->test($id);
             json_response(['ok' => true, 'data' => $result, 'integrations' => $integrations->list()]);
@@ -142,19 +161,54 @@ try {
             $input = json_body();
             $id = trim((string)($input['id'] ?? ''));
             $action = trim((string)($input['action'] ?? ''));
+            if (!$auth->canIntegration($id)) json_response(['ok'=>false,'error'=>'No permission for this integration.'],403);
             $result = $integrations->action($id, $action);
-            json_response(['ok' => true, 'data' => $result, 'integrations' => $integrations->list()]);
+            usleep(250000);
+            $summary = $integrations->execute($id, 'summary');
+            $integration = null;
+            foreach ($integrations->list() as $entry) if ($entry['id'] === $id) $integration = $entry;
+            if (!$integration) throw new RuntimeException('Integration not found after action.');
+            $history = persist_integration_widget_data($db, $integration, $summary);
+            $expected = $action === 'protection_enable';
+            if ((bool)($summary['protection'] ?? !$expected) !== $expected) {
+                throw new RuntimeException('The service accepted the request, but the protection state did not change. Check API permissions and the integration log.');
+            }
+            json_response(['ok'=>true,'data'=>$result,'summary'=>$summary,'history'=>$history,'integration'=>$integration,'integrations'=>visible_integrations($ctx)]);
+
+        case 'users/preference':
+            require_method('POST');
+            $input=json_body(); $key=(string)($input['key']??'');
+            if (!in_array($key,['sidebar_collapsed'],true)) throw new RuntimeException('Unsupported preference.');
+            $auth->setPreference($key,(bool)($input['value']??false));
+            json_response(['ok'=>true,'user'=>$auth->user()]);
+
+        case 'users/save':
+            require_method('POST'); require_admin($auth);
+            $auth->saveUser(json_body());
+            json_response(['ok'=>true,'users'=>$auth->listUsers()]);
+
+        case 'users/delete':
+            require_method('POST'); require_admin($auth);
+            $auth->deleteUser(trim((string)(json_body()['id']??'')));
+            json_response(['ok'=>true,'users'=>$auth->listUsers()]);
+
+        case 'users/password':
+            require_method('POST');
+            $input=json_body(); $auth->changeOwnPassword((string)($input['current']??''),(string)($input['password']??''));
+            json_response(['ok'=>true]);
 
         case 'search':
             require_method('GET');
-            json_response(['ok' => true, 'items' => global_search($db, $addons, $integrations, (string)($_GET['q'] ?? ''))]);
+            json_response(['ok' => true, 'items' => global_search($db, $addons, $integrations, $auth, (string)($_GET['q'] ?? ''))]);
 
         case 'export':
             require_method('GET');
+            require_admin($auth);
             json_response(['ok' => true, 'data' => export_data($ctx)]);
 
         case 'import':
             require_method('POST');
+            require_admin($auth);
             import_data($ctx, json_body()['data'] ?? []);
             json_response(['ok' => true] + bootstrap_payload($ctx));
 
@@ -162,6 +216,7 @@ try {
             if (str_starts_with($route, 'addon/')) {
                 $parts = explode('/', $route, 3);
                 $addonId = $parts[1] ?? '';
+                if ($addonId === 'ipmanager' && !$auth->canIpManager()) json_response(['ok'=>false,'error'=>'No permission for IP Manager.'],403);
                 $action = $parts[2] ?? 'get';
                 $apiFile = $addons->apiFile($addonId);
                 if (!$apiFile) json_response(['ok' => false, 'error' => 'Addon API unavailable.'], 404);
@@ -198,12 +253,44 @@ function json_body(): array
     return is_array($decoded) ? $decoded : [];
 }
 
+
+function require_admin($auth): void
+{
+    if (!$auth->isAdmin()) json_response(['ok'=>false,'error'=>'Administrator permission required.'],403);
+}
+
+function visible_integrations(array $ctx): array
+{
+    $all=$ctx['integrations']->list(); $auth=$ctx['auth'];
+    if($auth->isAdmin()) return $all;
+    return array_values(array_filter($all,fn($i)=>$auth->canIntegration((string)$i['id'])));
+}
+
+function visible_widgets(array $ctx): array
+{
+    $widgets=$ctx['db']->widgets(); $auth=$ctx['auth'];
+    if($auth->isAdmin()) return $widgets;
+    return array_values(array_filter($widgets,function($w)use($auth){
+        if(($w['type']??'')==='ipmanager-summary') return $auth->canIpManager();
+        if(($w['type']??'')==='integration-summary') return $auth->canIntegration((string)($w['config']['integration_id']??''));
+        return true;
+    }));
+}
+
+function require_widget_access(Database $db, $auth, string $id): void
+{
+    foreach($db->widgets() as $w){if($w['id']!==$id)continue;
+        if(($w['type']??'')==='ipmanager-summary'&&!$auth->canIpManager())json_response(['ok'=>false,'error'=>'No permission for IP Manager.'],403);
+        if(($w['type']??'')==='integration-summary'&&!$auth->canIntegration((string)($w['config']['integration_id']??'')))json_response(['ok'=>false,'error'=>'No permission for this integration.'],403);
+        return;
+    }
+}
+
 function settings_payload(Database $db): array
 {
     return [
         'theme' => $db->setting('theme', 'system'),
         'language' => $db->setting('language', 'de'),
-        'sidebar_compact' => (bool)$db->setting('sidebar_compact', false),
         'dashboard_title' => $db->setting('dashboard_title', 'My Homelab'),
     ];
 }
@@ -214,12 +301,15 @@ function bootstrap_payload(array $ctx): array
         'version' => (string)($ctx['version'] ?? 'dev'),
         'csrf' => $ctx['csrf'],
         'settings' => settings_payload($ctx['db']),
+        'user' => $ctx['auth']->user(),
+        'defaultPassword' => $ctx['auth']->isUsingDefaultAdminPassword(),
+        'users' => $ctx['auth']->isAdmin() ? $ctx['auth']->listUsers() : [],
         'apps' => $ctx['db']->apps(),
-        'widgets' => $ctx['db']->widgets(),
-        'addons' => $ctx['addons']->all(),
-        'widgetCatalog' => $ctx['addons']->widgetCatalog(),
-        'integrationTypes' => $ctx['addons']->integrationTypes(),
-        'integrations' => $ctx['integrations']->list(),
+        'widgets' => visible_widgets($ctx),
+        'addons' => $ctx['auth']->isAdmin() ? $ctx['addons']->all() : [],
+        'widgetCatalog' => $ctx['auth']->isAdmin() ? $ctx['addons']->widgetCatalog() : [],
+        'integrationTypes' => $ctx['auth']->isAdmin() ? $ctx['addons']->integrationTypes() : [],
+        'integrations' => visible_integrations($ctx),
     ];
 }
 
@@ -484,7 +574,7 @@ function widget_data(Database $db, $addons, $integrations, string $id, bool $cac
     }
 }
 
-function global_search(Database $db, $addons, $integrations, string $query): array
+function global_search(Database $db, $addons, $integrations, $auth, string $query): array
 {
     $q = trim($query);
     if ($q === '') return [];
@@ -494,9 +584,10 @@ function global_search(Database $db, $addons, $integrations, string $query): arr
     $stmt->execute(['q'=>$needle]);
     foreach ($stmt->fetchAll() as $row) $items[] = ['type'=>'app','title'=>$row['name'],'subtitle'=>$row['category'] ?: $row['url'],'url'=>$row['url'],'id'=>$row['id']];
     foreach ($integrations->list() as $row) {
+        if (!$auth->canIntegration((string)$row['id'])) continue;
         if (stripos($row['name'].' '.$row['type'].' '.$row['base_url'], $q) !== false) $items[] = ['type'=>'integration','title'=>$row['name'],'subtitle'=>$row['type'],'id'=>$row['id']];
     }
-    if ($addons->enabled('ipmanager')) {
+    if ($addons->enabled('ipmanager') && $auth->canIpManager()) {
         $stmt = $db->pdo()->prepare("SELECT id,name,cidr,vlan FROM ipm_networks WHERE name LIKE :q ESCAPE '\\' OR cidr LIKE :q ESCAPE '\\' OR vlan LIKE :q ESCAPE '\\' LIMIT 8");
         $stmt->execute(['q'=>$needle]);
         foreach ($stmt->fetchAll() as $row) $items[] = ['type'=>'network','title'=>$row['name'],'subtitle'=>$row['cidr'] . ($row['vlan']!==''?' · VLAN '.$row['vlan']:''),'id'=>$row['id'],'addon'=>'ipmanager'];

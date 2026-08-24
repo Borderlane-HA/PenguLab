@@ -1,7 +1,7 @@
 {
   "id": "adguardhome",
   "name": "AdGuard Home",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "category": "DNS",
   "author": "Borderlane-HA",
   "description": "AdGuard Home monitoring and protection controls using its documented /control API.",

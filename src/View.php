@@ -14,26 +14,30 @@ function icon(string $name): string
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
         'network' => '<rect x="3" y="4" width="7" height="5" rx="1"/><rect x="14" y="15" width="7" height="5" rx="1"/><rect x="3" y="15" width="7" height="5" rx="1"/><path d="M6.5 9v3h11v3M6.5 12v3"/>',
         'back' => '<path d="m15 18-6-6 6-6"/>',
+        'menu' => '<path d="M4 7h16M4 12h16M4 17h16"/>',
+        'collapse' => '<path d="m14 7-5 5 5 5"/>',
     ];
     $path = $paths[$name] ?? $paths['apps'];
     return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' . $path . '</svg>';
 }
 
-function renderSidebar(AddonManager $addons, string $active = 'dashboard'): void
+function renderSidebar(AddonManager $addons, string $active = 'dashboard', ?Auth $auth = null): void
 {
-    $ipm = $addons->enabled('ipmanager');
+    $ipm = $addons->enabled('ipmanager') && (!$auth || $auth->canIpManager());
+    $admin = !$auth || $auth->isAdmin();
+    $hasIntegrations = !$auth || $auth->isAdmin() || count($auth->user()['permissions']['integrations'] ?? []) > 0;
     ?>
     <aside class="sidebar" id="sidebar">
-      <a class="brand" href="./#dashboard" aria-label="PenguLab">
+      <div class="brand-row"><a class="brand" href="./#dashboard" aria-label="PenguLab">
         <span class="brand-mark"><span></span><span></span></span>
         <span class="brand-name">PenguLab</span>
         <span class="alpha-badge">2.0</span>
-      </a>
+      </a><button class="sidebar-collapse-btn" data-sidebar-collapse type="button" title="Seitenleiste ausblenden" aria-label="Seitenleiste ausblenden"><?= icon('collapse') ?></button></div>
       <nav class="primary-nav">
         <a class="nav-item <?= $active==='dashboard'?'active':'' ?>" href="./#dashboard"><?= icon('dashboard') ?><span>Dashboard</span></a>
         <a class="nav-item <?= $active==='apps'?'active':'' ?>" href="./#apps"><?= icon('apps') ?><span>Apps</span></a>
-        <a class="nav-item <?= $active==='integrations'?'active':'' ?>" href="./#integrations"><?= icon('plug') ?><span>Integrationen</span></a>
-        <a class="nav-item <?= $active==='hub'?'active':'' ?>" href="./#hub"><?= icon('store') ?><span>PenguHub</span></a>
+        <?php if ($hasIntegrations): ?><a class="nav-item <?= $active==='integrations'?'active':'' ?>" href="./#integrations"><?= icon('plug') ?><span>Integrationen</span></a><?php endif; ?>
+        <?php if ($admin): ?><a class="nav-item <?= $active==='hub'?'active':'' ?>" href="./#hub"><?= icon('store') ?><span>PenguHub</span></a><?php endif; ?>
       </nav>
       <?php if ($ipm): ?>
       <div class="nav-section-label">ADD-ONS</div>

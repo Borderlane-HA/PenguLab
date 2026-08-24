@@ -10,9 +10,36 @@ try {
     exit;
 }
 
+$auth = $ctx['auth'];
+$loginError = '';
+if (isset($_GET['logout'])) {
+    $auth->logout();
+    header('Location: ./');
+    exit;
+}
+if (!$auth->check() && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['pengulab_login'])) {
+    $csrf = (string)($_POST['csrf'] ?? '');
+    if ($csrf === '' || !hash_equals((string)$ctx['csrf'], $csrf)) {
+        $loginError = 'Sitzung abgelaufen. Bitte erneut versuchen.';
+    } elseif (!$auth->login((string)($_POST['username'] ?? ''), (string)($_POST['password'] ?? ''), !empty($_POST['remember']))) {
+        $loginError = 'Benutzername oder Passwort ist falsch.';
+    } else {
+        header('Location: ./');
+        exit;
+    }
+}
+if (!$auth->check()) {
+    $version = htmlspecialchars((string)($ctx['version'] ?? 'dev'));
+    ?><!doctype html>
+    <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>PenguLab · Login</title><link rel="icon" type="image/png" href="favicon.png"><link rel="stylesheet" href="assets/css/app.css?v=<?= rawurlencode($version) ?>"></head>
+    <body class="login-page"><main class="login-wrap"><section class="login-card"><div class="login-brand"><span class="brand-mark"><span></span><span></span></span><div><strong>PenguLab</strong><span><?= $version ?></span></div></div><div class="eyebrow">Control Center</div><h1>Anmelden</h1><p>Dein Homelab-Dashboard, Integrationen und Add-ons.</p><?php if($loginError!==''): ?><div class="login-error"><?= htmlspecialchars($loginError) ?></div><?php endif; ?><form method="post" autocomplete="on"><input type="hidden" name="pengulab_login" value="1"><input type="hidden" name="csrf" value="<?= htmlspecialchars((string)$ctx['csrf']) ?>"><div class="field-row"><label>Benutzername</label><input name="username" autocomplete="username" required autofocus></div><div class="field-row"><label>Passwort</label><input name="password" type="password" autocomplete="current-password" required></div><label class="remember-line"><input type="checkbox" name="remember" value="1" checked><span>Angemeldet bleiben</span></label><button class="btn primary login-button" type="submit">Anmelden</button></form><div class="login-hint">Erstanmeldung: <code>admin</code> / <code>admin</code> · Passwort danach unter Einstellungen ändern.</div></section></main></body></html><?php
+    exit;
+}
+
 $addons = $ctx['addons'];
 $addonId = trim((string)($_GET['addon'] ?? ''));
 $addonEntry = $addonId !== '' ? $addons->entrypoint($addonId) : null;
+if ($addonId === 'ipmanager' && !$auth->canIpManager()) { header('Location: ./#dashboard'); exit; }
 $settings = [
     'theme' => $ctx['db']->setting('theme', 'system'),
     'language' => $ctx['db']->setting('language', 'de'),
@@ -30,12 +57,13 @@ $assetVersion = rawurlencode($version);
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="assets/css/app.css?v=<?= htmlspecialchars($assetVersion) ?>">
 </head>
-<body>
+<body class="<?= $auth->preference('sidebar_collapsed', false) ? 'sidebar-collapsed' : '' ?>">
 <div class="shell">
-  <?php \PenguLab\renderSidebar($addons, $active); ?>
+  <?php \PenguLab\renderSidebar($addons, $active, $auth); ?>
   <div class="workspace">
     <?php if ($addonEntry): ?>
       <header class="topbar addon-topbar">
+        <button class="sidebar-open-btn" data-sidebar-open type="button" aria-label="Seitenleiste öffnen"><?= \PenguLab\icon('menu') ?></button>
         <a class="mobile-brand" href="./#dashboard">PenguLab</a>
         <a class="back-link" href="./#dashboard"><?= \PenguLab\icon('back') ?> Dashboard</a>
         <div class="topbar-spacer"></div>
@@ -46,18 +74,20 @@ $assetVersion = rawurlencode($version);
       </main>
     <?php else: ?>
       <header class="topbar">
+        <button class="sidebar-open-btn" data-sidebar-open type="button" aria-label="Seitenleiste öffnen"><?= \PenguLab\icon('menu') ?></button>
         <a class="mobile-brand" href="#dashboard">PenguLab</a>
         <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Navigation">☰</button>
         <button class="topbar-search" id="globalSearchButton" type="button"><?= \PenguLab\icon('search') ?><span>Search apps, IPs, integrations…</span><kbd>Ctrl K</kbd></button>
         <div class="topbar-spacer"></div>
         <div class="health-pill"><span class="status-dot"></span><span id="healthText">PenguLab ready</span></div>
-        <button class="avatar-btn" type="button" title="Local instance">P</button>
+        <a class="avatar-btn" href="#settings" title="<?= htmlspecialchars((string)($auth->user()['username'] ?? 'User')) ?>"><?= htmlspecialchars(strtoupper(substr((string)($auth->user()['username'] ?? 'P'),0,1))) ?></a>
       </header>
       <main class="main" id="app"><div class="boot-loader"><span></span><p>PenguLab wird geladen…</p></div></main>
-      <script>window.PENGULAB={api:'api.php',version:<?= json_encode($version, JSON_UNESCAPED_SLASHES) ?>};</script>
       <script src="assets/js/app.js?v=<?= htmlspecialchars($assetVersion) ?>" defer></script>
     <?php endif; ?>
   </div>
 </div>
+<script>window.PENGULAB={api:'api.php',version:<?= json_encode($version, JSON_UNESCAPED_SLASHES) ?>,csrf:<?= json_encode((string)$ctx['csrf'], JSON_UNESCAPED_SLASHES) ?>};</script>
+<script src="assets/js/shell.js?v=<?= htmlspecialchars($assetVersion) ?>" defer></script>
 </body>
 </html>

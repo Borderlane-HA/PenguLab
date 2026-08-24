@@ -35,16 +35,22 @@ return static function(array $integration, HttpClient $http, string $mode='summa
 
     $status = $http->request('GET', $base . '/control/status', $opts);
     if ($status['status'] !== 200 || !is_array($status['json'])) throw new RuntimeException('AdGuard Home status returned HTTP ' . $status['status'] . '.');
+    $dnsInfo = $http->request('GET', $base . '/control/dns_info', $opts);
     $stats = $http->request('GET', $base . '/control/stats', $opts);
     if ($stats['status'] !== 200 || !is_array($stats['json'])) throw new RuntimeException('AdGuard Home stats returned HTTP ' . $stats['status'] . '.');
     $s = $stats['json'];
+    $protection = !empty($status['json']['protection_enabled']);
+    $disabledDuration = (int)($status['json']['protection_disabled_duration'] ?? 0);
+    if ($dnsInfo['status'] >= 200 && $dnsInfo['status'] < 300 && is_array($dnsInfo['json'])) {
+        if (array_key_exists('protection_enabled', $dnsInfo['json'])) $protection = (bool)$dnsInfo['json']['protection_enabled'];
+    }
     $queries = (int)($s['num_dns_queries'] ?? 0);
     $blocked = (int)($s['num_blocked_filtering'] ?? 0);
     return [
         'service' => 'AdGuard Home',
         'status' => !empty($status['json']['running']) ? 'online' : 'offline',
-        'protection' => !empty($status['json']['protection_enabled']),
-        'protection_disabled_duration' => (int)($status['json']['protection_disabled_duration'] ?? 0),
+        'protection' => $protection,
+        'protection_disabled_duration' => $disabledDuration,
         'version' => (string)($status['json']['version'] ?? ''),
         'queries' => $queries,
         'blocked' => $blocked,

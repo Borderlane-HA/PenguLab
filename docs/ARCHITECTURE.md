@@ -13,6 +13,7 @@ The core owns:
 - widgets and widget placement
 - integration records and encrypted credentials
 - settings, import/export and search
+- local authentication, remember tokens and per-user authorization
 - package discovery/activation
 - shared navigation and UI primitives
 
@@ -49,8 +50,20 @@ Core tables:
 - `addons`
 - `addon_kv`
 - `integrations`
+- `users`
+- `remember_tokens`
+- `integration_widget_cache` / `integration_metric_samples`
 
 Add-ons own tables with a package-specific prefix. IP Manager, for example, owns `ipm_networks` and `ipm_devices`.
+
+
+## Authentication and authorization
+
+PenguLab uses local users stored in SQLite. Passwords use PHP `password_hash()`. Long-lived sign-in uses a selector/verifier remember-token design: the browser receives an HttpOnly cookie, while SQLite stores only the SHA-256 hash of the verifier.
+
+Administrators bypass resource filters. Normal users have a compact permission document containing an optional IP Manager grant and a list of integration IDs. The API enforces these permissions again server-side; hiding a navigation item is never treated as an authorization boundary.
+
+The sidebar collapsed state is stored in each user's preferences rather than in a global setting.
 
 ## Secrets
 

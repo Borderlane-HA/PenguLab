@@ -20,6 +20,8 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         }
         $sid = (string)$auth['json']['session']['sid'];
         $headers['X-FTL-SID'] = $sid;
+        $csrf = (string)($auth['json']['session']['csrf'] ?? '');
+        if ($csrf !== '') $headers['X-FTL-CSRF'] = $csrf;
     }
 
     try {
@@ -61,7 +63,15 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         ]);
         $protection = true;
         if ($blockingResult['status'] >= 200 && $blockingResult['status'] < 300 && is_array($blockingResult['json'])) {
-            $protection = (bool)($blockingResult['json']['blocking'] ?? true);
+            $rawBlocking = $blockingResult['json']['blocking'] ?? true;
+            if (is_bool($rawBlocking)) {
+                $protection = $rawBlocking;
+            } elseif (is_numeric($rawBlocking)) {
+                $protection = ((int)$rawBlocking) !== 0;
+            } else {
+                $normalized = strtolower(trim((string)$rawBlocking));
+                $protection = in_array($normalized, ['true','1','on','enabled','active'], true);
+            }
         }
 
         $j = $summary['json'];

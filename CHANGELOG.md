@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.0-alpha.7
+
+- Added local authentication and user management.
+- New installations create `admin` / `admin`; README and UI warn to change the default password.
+- Added 90-day HttpOnly remember-login tokens stored server-side as hashes.
+- Added per-user permissions for individual integrations and the IP Manager.
+- Added a fully collapsible sidebar with per-user persistence and a reopen button in the top bar.
+- Restricted PenguHub, integration/app configuration, dashboard editing, backups and user management to administrators.
+- Fixed Pi-hole protection-state parsing for boolean as well as `enabled`/`disabled` API responses.
+- Added Pi-hole CSRF header alongside SID authentication when available.
+- AdGuard Home protection state now also consults `/control/dns_info`.
+- DNS control actions now immediately re-read the actual service state, overwrite the widget cache, and fail visibly if the requested state did not change.
+
 ## 2.0.0-alpha.6
 
 ### Added
