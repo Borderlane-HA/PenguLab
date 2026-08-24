@@ -4,46 +4,46 @@
 
 # PenguLab
 
-**Your Homelab, at a glance.** PenguLab brings apps, infrastructure, DNS, monitoring, smart-home values and network documentation into one clean self-hosted dashboard.
+**All your Homelab. One beautiful dashboard.**
 
-No giant management suite. No cloud account. Just a fast control center you can shape around the services you actually use.
+PenguLab is a self-hosted control center for your homelab. It brings your apps, services, integrations and important stats together in one clean dashboard.
 
-## Why PenguLab?
+It is built for people who want a fast overview, useful widgets and a setup that stays easy to manage.
 
-- **Flexible dashboard** — move and resize widgets, build dense app grids and keep the things that matter visible.
-- **PenguHub integrations** — Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE, Zabbix, RSS and generic JSON APIs.
-- **Useful controls** — pause/resume DNS protection and control selected Home Assistant switches, lights and covers.
-- **Live status** — cached values appear instantly and refresh in the background; graphs keep their history across page changes.
-- **IP Manager** — document networks, VLANs and devices and discover hosts with network scans.
-- **Apps without clutter** — compact shortcuts with automatic favicons, categories and multiple tile layouts.
-- **Multi-user** — long-lived sign-in and per-user access to integrations and the IP Manager.
-- **Private by design** — credentials stay server-side and sensitive integration values are encrypted in SQLite.
+## Why people like PenguLab
 
-## Dashboard
+- **Unified overview** – keep your most important apps, widgets and services in one place.
+- **Real-time monitoring** – view live values, status information and small charts at a glance.
+- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE and Zabbix through PenguHub.
+- **Useful controls** – pause DNS protection or control selected Home Assistant entities right from the dashboard.
+- **Flexible layout** – move, resize and arrange widgets the way you like.
+- **Private by design** – your data stays on your own server.
+
+## Overview
 
 <p align="center">
   <img src="docs/images/dashboard-overview.png" alt="PenguLab dashboard overview" width="100%">
 </p>
 
-## PenguHub
+## What you can add
 
-PenguHub keeps optional features separate from the core. Install only what you need:
+PenguLab stays lightweight, but it can grow with your homelab through **PenguHub**.
 
-| Integration | What it adds |
-| --- | --- |
-| **Pi-hole** | DNS stats, graphs, latest blocked domains and protection controls |
-| **AdGuard Home** | DNS stats, latest blocked domains and protection controls |
-| **OPNsense** | Gateway, WireGuard, RAM and automatically discovered interface traffic |
-| **Home Assistant** | Selected sensors, switches, lights and covers — without replacing your HA dashboard |
-| **Proxmox VE** | Nodes, VMs, LXCs, CPU, RAM and storage overview |
-| **Zabbix** | Monitored hosts and current problems |
-| **IP Manager** | Networks, VLANs, devices and network discovery |
-| **RSS / Atom** | News feeds directly on the dashboard |
-| **Generic API** | Simple values from your own JSON endpoints |
+Available integrations and add-ons include:
+
+- Pi-hole
+- AdGuard Home
+- OPNsense
+- Home Assistant
+- Proxmox VE
+- Zabbix
+- RSS / Atom feeds
+- IP Manager
+- Generic JSON API widgets
 
 ## Install with Docker
 
-Create a folder and a `compose.yml`:
+Create a new folder, add a compose file and start PenguLab.
 
 ```yaml
 services:
@@ -57,7 +57,7 @@ services:
       - ./data:/app/data
 ```
 
-Start PenguLab:
+Then run:
 
 ```bash
 mkdir -p pengulab/data
@@ -65,46 +65,33 @@ cd pengulab
 docker compose up -d
 ```
 
-Open:
+Open PenguLab in your browser:
 
 ```text
 http://YOUR-SERVER:19961
 ```
 
-## Install on Proxmox VE
+## Install on Proxmox (LXC)
 
-PenguLab includes an interactive installer that creates an **unprivileged Debian LXC**, installs Docker and deploys PenguLab for you.
-
-Run on the **Proxmox host as root**:
+If you prefer Proxmox, use the included installer on your **Proxmox host**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Borderlane-HA/PenguLab/main/scripts/proxmox-lxc-install.sh -o /tmp/pengulab-lxc-install.sh
 bash /tmp/pengulab-lxc-install.sh
 ```
 
-The installer asks for the CTID, storage, bridge, DHCP/static IP and resource size. Afterwards the LXC can be managed locally with:
-
-```bash
-pengulabctl status
-pengulabctl update
-pengulabctl logs
-pengulabctl backup
-```
+The installer creates an unprivileged LXC, installs Docker and deploys PenguLab for you.
 
 ## First login
 
-A new installation starts with:
+A fresh installation starts with:
 
 ```text
 Username: admin
 Password: admin
 ```
 
-**Change the password after your first login.**
-
-## Data & backup
-
-All persistent data lives in the mounted `data/` directory. Back up that directory to keep your dashboard, users, integrations and encrypted secrets together.
+Please change the password after your first login.
 
 ## License
 

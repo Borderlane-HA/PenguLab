@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.1
+
+- Refined the README with a more inviting, user-friendly structure and updated hero presentation.
+- Updated the bundled header image to match the new PenguLab brand presentation without hard-coded version numbers.
+- Adjusted documentation wording to be more realistic and less overpromising.
+- Version bump and release packaging cleanup.
+
+
 ## 2.2.0
 
 - Added Proxmox VE PenguHub integration with read-only node, guest, CPU, RAM and storage status.
