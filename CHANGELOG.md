@@ -1,5 +1,30 @@
 # Changelog
 
+
+## 2.0.0-alpha.4
+
+### Added
+- Added Pi-hole v6 and AdGuard Home protection controls directly to dashboard widgets: resume, pause for 5 minutes, and pause indefinitely.
+- Restored server-side automatic favicon discovery for apps, with a manual “reload favicon” action in the app editor.
+- Added a compact app-library view for larger Homelabs, category chips, search, and a compact/details view switch.
+- Added adaptive app shortcut widgets that can be resized down to 1×1.
+
+### Fixed
+- Fixed app dashboard widgets snapping back to a wider size after saving; app widgets now support a minimum width of one grid column on both client and server.
+- Pi-hole widgets now read the real blocking state from `/api/dns/blocking` instead of assuming protection is active.
+- Proxmox installer now installs the Debian `docker-cli` package explicitly and uses `C.UTF-8` during package installation to avoid locale warnings.
+
+### Changed
+- New app dashboard shortcuts default to a compact 2×1 size instead of 3×2.
+- DNS control actions are explicit PenguHub permissions (`service.control`) and are routed server-side so credentials never reach the browser.
+
+## 2.0.0-alpha.3
+
+### Fixed
+- Fixed startup failure on Docker bind mounts (`SQLSTATE[HY000] [14] unable to open database file`).
+- Added a small container entrypoint that repairs ownership of the persistent data directory before dropping privileges to the unprivileged `pengulab` user.
+- This makes `/app/data` work consistently with the Proxmox LXC installer and normal Docker Compose bind mounts.
+
 ## 2.0.0-alpha.2
 
 - Added an interactive Proxmox VE 8/9 LXC installer with Debian 13 and Debian 12 fallback.

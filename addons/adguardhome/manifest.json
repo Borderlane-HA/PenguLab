@@ -1,25 +1,59 @@
 {
   "id": "adguardhome",
   "name": "AdGuard Home",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "category": "DNS",
   "author": "Borderlane-HA",
-  "description": "AdGuard Home monitoring using its documented /control API.",
+  "description": "AdGuard Home monitoring and protection controls using its documented /control API.",
   "icon": "shield-check",
   "connector": "connector.php",
-  "permissions": ["network.http", "secrets.read"],
+  "permissions": [
+    "network.http",
+    "secrets.read",
+    "service.control"
+  ],
   "integration": {
     "type": "adguardhome",
     "name": "AdGuard Home",
     "description": "AdGuard Home",
     "fields": [
-      {"key": "base_url", "label": "URL", "type": "url", "placeholder": "https://adguard.local", "required": true},
-      {"key": "username", "label": "Username", "type": "text"},
-      {"key": "password", "label": "Password", "type": "password", "secret": true},
-      {"key": "verify_tls", "label": "Verify TLS certificate", "type": "boolean", "default": true}
+      {
+        "key": "base_url",
+        "label": "URL",
+        "type": "url",
+        "placeholder": "https://adguard.local",
+        "required": true
+      },
+      {
+        "key": "username",
+        "label": "Username",
+        "type": "text"
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "type": "password",
+        "secret": true
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": true
+      }
     ]
   },
   "widgets": [
-    {"type": "integration-summary", "integrationType": "adguardhome", "name": "AdGuard Summary", "description": "Queries, blocked percentage and protection state.", "icon": "shield-check", "defaultSize": [4, 2]}
+    {
+      "type": "integration-summary",
+      "integrationType": "adguardhome",
+      "name": "AdGuard Summary",
+      "description": "Queries, blocked percentage and protection controls.",
+      "icon": "shield-check",
+      "defaultSize": [
+        4,
+        2
+      ]
+    }
   ]
 }

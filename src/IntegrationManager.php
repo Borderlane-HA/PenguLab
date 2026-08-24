@@ -116,6 +116,19 @@ final class IntegrationManager
         return $result;
     }
 
+    public function action(string $id, string $action): array
+    {
+        $allowed = ['protection_enable', 'protection_disable', 'protection_pause_300'];
+        if (!in_array($action, $allowed, true)) {
+            throw new RuntimeException('Unsupported integration action.');
+        }
+        $integration = $this->full($id);
+        if (!$integration || !in_array((string)$integration['type'], ['pihole', 'adguardhome'], true)) {
+            throw new RuntimeException('This integration does not expose protection controls.');
+        }
+        return $this->execute($id, 'action:' . $action);
+    }
+
     public function execute(string $id, string $mode = 'summary'): array
     {
         $integration = $this->full($id);

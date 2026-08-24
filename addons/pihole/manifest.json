@@ -1,24 +1,54 @@
 {
   "id": "pihole",
   "name": "Pi-hole",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "category": "DNS",
   "author": "Borderlane-HA",
-  "description": "Pi-hole v6 monitoring through the official session-based API.",
+  "description": "Pi-hole v6 monitoring and protection controls through the official session-based API.",
   "icon": "shield",
   "connector": "connector.php",
-  "permissions": ["network.http", "secrets.read"],
+  "permissions": [
+    "network.http",
+    "secrets.read",
+    "service.control"
+  ],
   "integration": {
     "type": "pihole",
     "name": "Pi-hole",
     "description": "Pi-hole v6",
     "fields": [
-      {"key": "base_url", "label": "URL", "type": "url", "placeholder": "https://pi.hole", "required": true},
-      {"key": "password", "label": "Application password", "type": "password", "secret": true},
-      {"key": "verify_tls", "label": "Verify TLS certificate", "type": "boolean", "default": true}
+      {
+        "key": "base_url",
+        "label": "URL",
+        "type": "url",
+        "placeholder": "https://pi.hole",
+        "required": true
+      },
+      {
+        "key": "password",
+        "label": "Application password",
+        "type": "password",
+        "secret": true
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": true
+      }
     ]
   },
   "widgets": [
-    {"type": "integration-summary", "integrationType": "pihole", "name": "Pi-hole Summary", "description": "Queries, blocked percentage and clients.", "icon": "shield", "defaultSize": [4, 2]}
+    {
+      "type": "integration-summary",
+      "integrationType": "pihole",
+      "name": "Pi-hole Summary",
+      "description": "Queries, blocked percentage, clients and protection controls.",
+      "icon": "shield",
+      "defaultSize": [
+        4,
+        2
+      ]
+    }
   ]
 }

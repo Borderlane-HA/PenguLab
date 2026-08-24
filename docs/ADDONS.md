@@ -74,6 +74,7 @@ Permissions are currently descriptive metadata exposed by PenguHub. Alpha packag
 
 - `network.http`
 - `secrets.read`
+- `service.control` — package exposes a small explicit set of write actions (for example DNS protection pause/resume)
 - `storage.addon`
 
 The future remote PenguHub should make permissions enforceable before third-party packages are supported.

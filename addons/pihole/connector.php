@@ -23,12 +23,45 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     }
 
     try {
+        if (str_starts_with($mode, 'action:')) {
+            $action = substr($mode, 7);
+            [$blocking, $timer] = match ($action) {
+                'protection_enable' => [true, null],
+                'protection_disable' => [false, null],
+                'protection_pause_300' => [false, 300],
+                default => throw new RuntimeException('Unsupported Pi-hole action.'),
+            };
+            $result = $http->request('POST', $base . '/api/dns/blocking', [
+                'verify_tls' => $verify,
+                'headers' => $headers,
+                'json' => ['blocking' => $blocking, 'timer' => $timer],
+            ]);
+            if ($result['status'] < 200 || $result['status'] >= 300) {
+                throw new RuntimeException('Pi-hole protection action returned HTTP ' . $result['status'] . '.');
+            }
+            return [
+                'service' => 'Pi-hole',
+                'action' => $action,
+                'protection' => $blocking,
+                'pause_seconds' => $timer,
+            ];
+        }
+
         $summary = $http->request('GET', $base . '/api/stats/summary', [
             'verify_tls' => $verify,
             'headers' => $headers,
         ]);
         if ($summary['status'] < 200 || $summary['status'] >= 300 || !is_array($summary['json'])) {
             throw new RuntimeException('Pi-hole summary returned HTTP ' . $summary['status'] . '.');
+        }
+
+        $blockingResult = $http->request('GET', $base . '/api/dns/blocking', [
+            'verify_tls' => $verify,
+            'headers' => $headers,
+        ]);
+        $protection = true;
+        if ($blockingResult['status'] >= 200 && $blockingResult['status'] < 300 && is_array($blockingResult['json'])) {
+            $protection = (bool)($blockingResult['json']['blocking'] ?? true);
         }
 
         $j = $summary['json'];
@@ -40,6 +73,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         return [
             'service' => 'Pi-hole',
             'status' => 'online',
+            'protection' => $protection,
             'queries' => $queries,
             'blocked' => $blocked,
             'blocked_percent' => round($percent, 1),

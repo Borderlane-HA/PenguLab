@@ -10,6 +10,7 @@
     editMode: false,
     appSearch: '',
     appCategory: 'all',
+    appView: localStorage.getItem('pengulab-app-view') || 'compact',
     widgetRefreshTimers: new Map(),
   };
 
@@ -137,7 +138,9 @@
 
   function widgetShell(widget) {
     const title = widget.title || widgetTitle(widget);
-    return `<section class="widget" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2}">
+    const typeClass = `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
+    const sizeClass = widget.type === 'app' ? (widget.w <= 1 ? 'app-widget-xs' : widget.w === 2 ? 'app-widget-sm' : 'app-widget-lg') : '';
+    return `<section class="widget ${typeClass} ${sizeClass}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2}">
       <div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu"><button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button></div></div>
       <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
     </section>`;
@@ -196,7 +199,8 @@
     if (data.kind === 'app') {
       const app = data.app;
       if (!app) { body.innerHTML = '<div class="widget-error">App wurde entfernt.</div>'; return; }
-      body.innerHTML = `<div class="app-widget">${appIcon(app)}<div class="app-widget-copy"><div class="app-widget-name">${esc(app.name)}</div><div class="app-widget-meta">${esc(app.category || hostOf(app.url))}</div></div><a class="app-widget-open" href="${attr(app.url)}" target="_blank" rel="noopener" title="Öffnen">↗</a></div>`;
+      const size = widget.w <= 1 ? 'xs' : widget.w === 2 ? 'sm' : 'lg';
+      body.innerHTML = `<a class="app-widget app-widget-${size}" href="${attr(app.url)}" target="_blank" rel="noopener" title="${attr(app.name)} öffnen">${appIcon(app)}<div class="app-widget-copy"><div class="app-widget-name">${esc(app.name)}</div><div class="app-widget-meta">${esc(app.category || hostOf(app.url))}</div></div><span class="app-widget-open" aria-hidden="true">↗</span></a>`;
       return;
     }
     if (data.kind === 'ipmanager') {
@@ -209,7 +213,9 @@
       return;
     }
     if (data.kind === 'integration') {
-      body.innerHTML = integrationSummaryHtml(data.integration || {}, data.summary || {}); return;
+      body.innerHTML = integrationSummaryHtml(data.integration || {}, data.summary || {});
+      bindIntegrationActions(body, widget, data.integration || {});
+      return;
     }
     body.innerHTML = `<pre style="font-size:10px;overflow:auto">${esc(JSON.stringify(data,null,2))}</pre>`;
   }
@@ -217,7 +223,8 @@
   function integrationSummaryHtml(integration, summary) {
     const type = integration.type || '';
     if (type === 'pihole' || type === 'adguardhome') {
-      return `<div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span></div><div class="metric-grid"><div class="metric"><div class="metric-label">Queries</div><div class="metric-value">${fmt(summary.queries)}</div></div><div class="metric"><div class="metric-label">Blocked</div><div class="metric-value">${fmt(summary.blocked_percent)}%</div></div><div class="metric"><div class="metric-label">Status</div><div class="metric-value">${summary.protection === false ? 'Paused' : 'Active'}</div></div><div class="metric"><div class="metric-label">Clients</div><div class="metric-value">${type==='pihole'?fmt(summary.clients):'—'}</div></div></div>`;
+      const active = summary.protection !== false;
+      return `<div class="dns-widget"><div class="service-heading"><span class="status-dot ${active?'':'paused'}"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state ${active?'active':'paused'}">${active?'Schutz aktiv':'Schutz pausiert'}</span></div><div class="metric-grid dns-metrics"><div class="metric"><div class="metric-label">Queries</div><div class="metric-value">${fmt(summary.queries)}</div></div><div class="metric"><div class="metric-label">Blocked</div><div class="metric-value">${fmt(summary.blocked_percent)}%</div></div><div class="metric"><div class="metric-label">Status</div><div class="metric-value">${active ? 'Active' : 'Paused'}</div></div><div class="metric"><div class="metric-label">Clients</div><div class="metric-value">${type==='pihole'?fmt(summary.clients):'—'}</div></div></div><div class="service-actions"><button class="service-action ${active?'':'primary'}" data-integration-action="protection_enable" ${active?'disabled':''}>Fortsetzen</button><button class="service-action" data-integration-action="protection_pause_300">5 Min Pause</button><button class="service-action danger" data-integration-action="protection_disable" ${!active?'disabled':''}>Anhalten</button></div></div>`;
     }
     if (type === 'opnsense') {
       const sys = summary.system || {};
@@ -229,6 +236,26 @@
       return `<div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span></div><div class="metric-grid">${values.map(([k,v]) => `<div class="metric"><div class="metric-label">${esc(k)}</div><div class="metric-value">${esc(String(v))}</div></div>`).join('') || '<div class="metric"><div class="metric-label">Status</div><div class="metric-value">Online</div></div>'}</div>`;
     }
     return `<div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name || summary.service || 'Service')}</span></div><pre style="font-size:10px;overflow:auto">${esc(JSON.stringify(summary,null,2))}</pre>`;
+  }
+
+  function bindIntegrationActions(body, widget, integration) {
+    $$('[data-integration-action]', body).forEach(button => button.addEventListener('click', async e => {
+      e.preventDefault(); e.stopPropagation();
+      const action = button.dataset.integrationAction;
+      const label = button.textContent;
+      $$('[data-integration-action]', body).forEach(b => b.disabled = true);
+      button.textContent = '…';
+      try {
+        const result = await api('integrations/action', {body:{id:integration.id, action}});
+        state.boot.integrations = result.integrations || state.boot.integrations;
+        toast(action === 'protection_enable' ? 'Schutz fortgesetzt.' : action === 'protection_pause_300' ? 'Schutz für 5 Minuten pausiert.' : 'Schutz angehalten.');
+        await loadOneWidget(widget);
+      } catch (err) {
+        toast(err.message, 'error');
+        button.textContent = label;
+        await loadOneWidget(widget, true);
+      }
+    }));
   }
 
   function enableGridInteractions() {
@@ -262,8 +289,8 @@
   }
   function startResize(ev, el, widget, grid) {
     ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');const m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={w:widget.w,h:widget.h};
-    const move=e=>{const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);widget.w=Math.max(2,Math.min(12-widget.x,original.w+dw));widget.h=Math.max(1,Math.min(8,original.h+dh));setWidgetStyle(el,widget)};
-    const up=async()=>{el.classList.remove('dragging');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(!positionFree(widget,state.boot.widgets,widget.id)){widget.w=original.w;widget.h=original.h;setWidgetStyle(el,widget);toast('Dort ist nicht genug Platz.','error');return;}await saveLayout();};
+    const move=e=>{const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);const minW=widget.type==='app'?1:2;widget.w=Math.max(minW,Math.min(12-widget.x,original.w+dw));widget.h=Math.max(1,Math.min(8,original.h+dh));setWidgetStyle(el,widget);el.classList.toggle('app-widget-xs',widget.type==='app'&&widget.w<=1);el.classList.toggle('app-widget-sm',widget.type==='app'&&widget.w===2);el.classList.toggle('app-widget-lg',widget.type==='app'&&widget.w>=3)};
+    const up=async()=>{el.classList.remove('dragging');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(!positionFree(widget,state.boot.widgets,widget.id)){widget.w=original.w;widget.h=original.h;setWidgetStyle(el,widget);toast('Dort ist nicht genug Platz.','error');return;}await saveLayout();await loadOneWidget(widget,true);};
     window.addEventListener('pointermove',move);window.addEventListener('pointerup',up,{once:true});
   }
   async function saveLayout(){try{const d=await api('widgets/layout',{body:{widgets:(state.boot.widgets||[]).map(({id,x,y,w,h})=>({id,x,y,w,h}))}});state.boot.widgets=d.widgets;}catch(e){toast(e.message,'error')}}
@@ -292,7 +319,7 @@
     }
     if (key === 'app') {
       const opts=(state.boot.apps||[]).map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('');
-      showModal('App Shortcut','Wähle eine vorhandene App.',`<div class="field-row"><label>App</label><select id="widgetAppId">${opts}</select></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value;closeModal();createWidget({type:'app',config:{app_id:id},w:3,h:2});}});return;
+      showModal('App Shortcut','Wähle eine vorhandene App.',`<div class="field-row"><label>App</label><select id="widgetAppId">${opts}</select></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value;closeModal();createWidget({type:'app',config:{app_id:id},w:2,h:1});}});return;
     }
     if (key === 'note') {
       showModal('Notiz','Kurzer Text für dein Dashboard.',`<div class="field-row"><label>Titel (optional)</label><input id="widgetTitle"></div><div class="field-row"><label>Text</label><textarea id="widgetText" placeholder="Was willst du im Blick behalten?"></textarea></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,text=$('#widgetText',modal).value;closeModal();createWidget({type:'note',title,config:{text},w:3,h:2});}});return;
@@ -305,23 +332,45 @@
   async function createWidget(payload){try{const d=await api('widgets/create',{body:payload});state.boot.widgets=d.widgets;if(state.view==='dashboard')renderDashboard();else render();toast('Widget hinzugefügt.');}catch(e){toast(e.message,'error')}}
 
   function renderApps() {
-    const all=state.boot.apps||[];const cats=[...new Set(all.map(a=>a.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-    const q=state.appSearch.trim().toLowerCase();const filtered=all.filter(a=>(state.appCategory==='all'||a.category===state.appCategory)&&(!q||`${a.name} ${a.url} ${a.description} ${a.category}`.toLowerCase().includes(q)));
-    appRoot.innerHTML=pageHead('Library','Apps','Alle Web-UIs und Dienste zentral verwalten. Keine Seiten mehr – einfach suchen und öffnen.',`<button class="btn primary" id="addAppBtn">+ App</button>`)+
-      `<div class="section-card filter-bar"><div class="search-field"><span>⌕</span><input id="appSearch" placeholder="Apps durchsuchen…" value="${attr(state.appSearch)}"></div><select class="filter-chip" id="appCategory"><option value="all">Alle Kategorien</option>${cats.map(c=>`<option ${state.appCategory===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div>`+
-      `<div class="apps-grid">${filtered.map(app=>`<article class="app-card"><div class="app-card-top">${appIcon(app)}<div class="app-card-copy"><div class="app-card-name">${esc(app.name)}</div>${app.category?`<div class="app-card-category">${esc(app.category)}</div>`:''}<div class="url-host">${esc(hostOf(app.url))}</div></div></div><div class="app-card-description">${esc(app.description||'Keine Beschreibung.')}</div><div class="app-card-actions"><a class="btn soft" href="${attr(app.url)}" target="_blank" rel="noopener">Öffnen ↗</a><button class="btn" data-add-app-widget="${attr(app.id)}">Dashboard</button><button class="btn" data-edit-app="${attr(app.id)}">Bearbeiten</button></div></article>`).join('') || `<div class="empty-dashboard"><h3>Keine Apps gefunden</h3><p>Lege deine erste App an oder ändere den Filter.</p></div>`}</div>`;
+    const all = state.boot.apps || [];
+    const cats = [...new Set(all.map(a=>a.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    const q = state.appSearch.trim().toLowerCase();
+    const filtered = all.filter(a => (state.appCategory==='all'||a.category===state.appCategory) && (!q || `${a.name} ${a.url} ${a.description} ${a.category}`.toLowerCase().includes(q)));
+    const categoryButtons = `<button class="category-chip ${state.appCategory==='all'?'active':''}" data-app-category="all">Alle <span>${all.length}</span></button>${cats.map(c=>`<button class="category-chip ${state.appCategory===c?'active':''}" data-app-category="${attr(c)}">${esc(c)} <span>${all.filter(a=>a.category===c).length}</span></button>`).join('')}`;
+    const compact = state.appView === 'compact';
+    const cards = filtered.map(app => compact ? `
+      <article class="app-library-item">
+        <a class="app-library-open" href="${attr(app.url)}" target="_blank" rel="noopener">${appIcon(app,'library-icon')}<span class="app-library-copy"><strong>${esc(app.name)}</strong><small>${esc(app.category || hostOf(app.url))}</small></span><span class="app-library-arrow">↗</span></a>
+        <div class="app-library-actions"><button title="Zum Dashboard" data-add-app-widget="${attr(app.id)}">＋</button><button title="Bearbeiten" data-edit-app="${attr(app.id)}">⋯</button></div>
+      </article>` : `
+      <article class="app-card"><div class="app-card-top">${appIcon(app)}<div class="app-card-copy"><div class="app-card-name">${esc(app.name)}</div>${app.category?`<div class="app-card-category">${esc(app.category)}</div>`:''}<div class="url-host">${esc(hostOf(app.url))}</div></div></div><div class="app-card-description">${esc(app.description||'Keine Beschreibung.')}</div><div class="app-card-actions"><a class="btn soft" href="${attr(app.url)}" target="_blank" rel="noopener">Öffnen ↗</a><button class="btn" data-add-app-widget="${attr(app.id)}">Dashboard</button><button class="btn" data-edit-app="${attr(app.id)}">Bearbeiten</button></div></article>`).join('');
+
+    appRoot.innerHTML = pageHead('Library','Apps','Viele Homelab-Dienste schnell finden, sauber gruppieren und mit einem Klick öffnen.',`<div class="view-switch"><button data-app-view="compact" class="${compact?'active':''}" title="Kompakt">▦</button><button data-app-view="cards" class="${!compact?'active':''}" title="Details">▤</button></div><button class="btn primary" id="addAppBtn">+ App</button>`) +
+      `<div class="section-card app-library-tools"><div class="search-field"><span>⌕</span><input id="appSearch" placeholder="App, Host oder Kategorie suchen…" value="${attr(state.appSearch)}"></div><div class="category-strip">${categoryButtons}</div></div>` +
+      `<div class="${compact?'app-library-grid':'apps-grid'}">${cards || `<div class="empty-dashboard"><h3>Keine Apps gefunden</h3><p>Lege deine erste App an oder ändere den Filter.</p></div>`}</div>`;
+
     $('#addAppBtn').onclick=()=>openAppModal();
     $('#appSearch').addEventListener('input',e=>{state.appSearch=e.target.value;renderApps();requestAnimationFrame(()=>{$('#appSearch')?.focus();$('#appSearch')?.setSelectionRange(state.appSearch.length,state.appSearch.length)})});
-    $('#appCategory').addEventListener('change',e=>{state.appCategory=e.target.value;renderApps()});
-    $$('[data-edit-app]').forEach(b=>b.onclick=()=>openAppModal(all.find(a=>a.id===b.dataset.editApp)));
-    $$('[data-add-app-widget]').forEach(b=>b.onclick=()=>createWidget({type:'app',config:{app_id:b.dataset.addAppWidget},w:3,h:2}));
+    $$('[data-app-category]').forEach(b=>b.onclick=()=>{state.appCategory=b.dataset.appCategory;renderApps()});
+    $$('[data-app-view]').forEach(b=>b.onclick=()=>{state.appView=b.dataset.appView;localStorage.setItem('pengulab-app-view',state.appView);renderApps()});
+    $$('[data-edit-app]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();openAppModal(all.find(a=>a.id===b.dataset.editApp))});
+    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget},w:2,h:1})});
   }
 
   function openAppModal(app=null) {
-    const editing=!!app;const imageValue=app?.image?.startsWith('data:')?'':(app?.image||'');
-    showModal(editing?'App bearbeiten':'App hinzufügen',editing?'Ändere Link, Kategorie oder Beschreibung.':'Die App kann optional direkt aufs Dashboard.',`<div class="form-grid"><div class="field-row full"><label>Name</label><input id="appName" maxlength="100" value="${attr(app?.name||'')}" placeholder="Home Assistant"></div><div class="field-row full"><label>URL</label><input id="appUrl" type="url" value="${attr(app?.url||'')}" placeholder="https://homeassistant.local"></div><div class="field-row"><label>Kategorie</label><input id="appCategoryField" value="${attr(app?.category||'')}" placeholder="Smart Home"></div><div class="field-row"><label>Icon URL (optional)</label><input id="appImage" value="${attr(imageValue)}" placeholder="https://…/icon.png"></div><div class="field-row full"><label>Beschreibung</label><textarea id="appDescription">${esc(app?.description||'')}</textarea></div>${!editing?`<label class="setting-line full"><span class="setting-copy"><strong>Direkt zum Dashboard</strong><p>Erstellt zusätzlich ein Shortcut-Widget.</p></span><button type="button" class="toggle on" id="appDashboardToggle"></button></label>`:''}</div>`, `<button class="btn" data-close-modal>Abbrechen</button>${editing?`<button class="btn danger" id="deleteApp">Löschen</button>`:''}<button class="btn primary" id="saveApp">Speichern</button>`, modal=>{
-      let addToDashboard=!editing;$('#appDashboardToggle',modal)?.addEventListener('click',e=>{e.currentTarget.classList.toggle('on');addToDashboard=e.currentTarget.classList.contains('on')});
-      $('#saveApp',modal).onclick=async()=>{const payload={id:app?.id,name:$('#appName',modal).value,url:$('#appUrl',modal).value,category:$('#appCategoryField',modal).value,image:$('#appImage',modal).value || app?.image || '',description:$('#appDescription',modal).value,add_to_dashboard:addToDashboard};try{const d=await api('apps/save',{body:payload});state.boot.apps=d.apps;state.boot.widgets=d.widgets;closeModal();renderApps();toast('App gespeichert.');}catch(e){toast(e.message,'error')}};
+    const editing = !!app;
+    const imageValue = app?.image?.startsWith('data:') ? '' : (app?.image||'');
+    const currentPreview = app?.image || '';
+    showModal(editing?'App bearbeiten':'App hinzufügen',editing?'Link, Kategorie, Icon oder Beschreibung ändern.':'PenguLab sucht das Favicon automatisch, wenn kein eigenes Icon gesetzt ist.',`<div class="form-grid"><div class="field-row full"><label>Name</label><input id="appName" maxlength="100" value="${attr(app?.name||'')}" placeholder="Home Assistant"></div><div class="field-row full"><label>URL</label><input id="appUrl" type="url" value="${attr(app?.url||'')}" placeholder="https://homeassistant.local"></div><div class="field-row"><label>Kategorie</label><input id="appCategoryField" value="${attr(app?.category||'')}" placeholder="Smart Home"></div><div class="field-row"><label>Icon URL (optional)</label><input id="appImage" value="${attr(imageValue)}" placeholder="Leer = Favicon automatisch"></div><div class="field-row full"><label>Icon</label><div class="favicon-row"><div id="faviconPreview">${appIcon({name:app?.name||'App',image:currentPreview},'favicon-preview-icon')}</div><div><button class="btn small" type="button" id="lookupFavicon">Favicon neu laden</button><div class="field-help" id="faviconHelp">Bei leerem Icon wird beim Speichern automatisch gesucht.</div></div></div></div><div class="field-row full"><label>Beschreibung</label><textarea id="appDescription">${esc(app?.description||'')}</textarea></div>${!editing?`<label class="setting-line full"><span class="setting-copy"><strong>Direkt zum Dashboard</strong><p>Erstellt einen kompakten Shortcut. Er kann später bis auf 1×1 verkleinert werden.</p></span><button type="button" class="toggle on" id="appDashboardToggle"></button></label>`:''}</div>`, `<button class="btn" data-close-modal>Abbrechen</button>${editing?`<button class="btn danger" id="deleteApp">Löschen</button>`:''}<button class="btn primary" id="saveApp">Speichern</button>`, modal=>{
+      let addToDashboard=!editing;
+      let detectedImage=currentPreview;
+      let refreshFavicon=false;
+      $('#appDashboardToggle',modal)?.addEventListener('click',e=>{e.currentTarget.classList.toggle('on');addToDashboard=e.currentTarget.classList.contains('on')});
+      const updatePreview=()=>{const name=$('#appName',modal).value||'App';const manual=$('#appImage',modal).value.trim();$('#faviconPreview',modal).innerHTML=appIcon({name,image:manual||detectedImage},'favicon-preview-icon')};
+      $('#appName',modal).addEventListener('input',updatePreview);
+      $('#appImage',modal).addEventListener('input',()=>{if($('#appImage',modal).value.trim())detectedImage='';updatePreview()});
+      $('#lookupFavicon',modal).onclick=async()=>{const url=$('#appUrl',modal).value.trim();if(!url){toast('URL fehlt.','error');return;}const btn=$('#lookupFavicon',modal);btn.disabled=true;btn.textContent='Suche…';try{const d=await api('apps/favicon',{body:{url,verify_tls:true}});detectedImage=d.image||'';refreshFavicon=true;$('#appImage',modal).value='';updatePreview();$('#faviconHelp',modal).textContent=detectedImage?'Favicon gefunden und wird beim Speichern übernommen.':'Kein Favicon gefunden. Du kannst eine Icon-URL eintragen.';}catch(e){$('#faviconHelp',modal).textContent=e.message;toast(e.message,'error')}finally{btn.disabled=false;btn.textContent='Favicon neu laden'}};
+      $('#saveApp',modal).onclick=async()=>{const manualImage=$('#appImage',modal).value.trim();const payload={id:app?.id,name:$('#appName',modal).value,url:$('#appUrl',modal).value,category:$('#appCategoryField',modal).value,image:manualImage || detectedImage || '',description:$('#appDescription',modal).value,add_to_dashboard:addToDashboard,refresh_favicon:refreshFavicon};try{const d=await api('apps/save',{body:payload});state.boot.apps=d.apps;state.boot.widgets=d.widgets;closeModal();renderApps();toast('App gespeichert.');}catch(e){toast(e.message,'error')}};
       $('#deleteApp',modal)?.addEventListener('click',async()=>{if(!confirm(`App „${app.name}“ löschen?`))return;try{const d=await api('apps/delete',{body:{id:app.id}});state.boot.apps=d.apps;state.boot.widgets=d.widgets;closeModal();renderApps();toast('App gelöscht.');}catch(e){toast(e.message,'error')}});
     });
   }

@@ -113,8 +113,12 @@ install_runtime() {
   pct exec "$ctid" -- bash -lc '
     set -e
     export DEBIAN_FRONTEND=noninteractive
+    export LANG=C.UTF-8 LC_ALL=C.UTF-8
     apt-get update
     apt-get install -y --no-install-recommends ca-certificates curl docker.io
+    if apt-cache show docker-cli >/dev/null 2>&1; then
+      apt-get install -y --no-install-recommends docker-cli
+    fi
 
     if apt-cache show docker-compose-v2 >/dev/null 2>&1; then
       apt-get install -y --no-install-recommends docker-compose-v2
@@ -128,6 +132,7 @@ install_runtime() {
     fi
 
     systemctl enable --now docker
+    command -v docker >/dev/null 2>&1 || { echo "Docker CLI is missing after installation." >&2; exit 1; }
     mkdir -p /opt/pengulab/data /opt/pengulab/backups
   '
 }
@@ -259,7 +264,7 @@ Usage:
   pengulabctl update
   pengulabctl channel stable
   pengulabctl channel prerelease
-  pengulabctl version 2.0.0-alpha.2
+  pengulabctl version 2.0.0-alpha.4
   pengulabctl backup [target.tar.gz]
   pengulabctl logs
   pengulabctl restart
@@ -335,7 +340,7 @@ main() {
     1) tag="latest"; channel_label="Stable" ;;
     2) tag="prerelease"; channel_label="Pre-release" ;;
     3)
-      prompt tag "Exact Docker release tag (e.g. 2.0.0-alpha.2)" "2.0.0-alpha.2"
+      prompt tag "Exact Docker release tag (e.g. 2.0.0-alpha.4)" "2.0.0-alpha.4"
       validate_tag "$tag"
       channel_label="Pinned: $tag"
       ;;

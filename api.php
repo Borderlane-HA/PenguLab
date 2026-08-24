@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use PenguLab\Database;
 use PenguLab\FeedReader;
+use PenguLab\Favicon;
 use PenguLab\HttpClient;
 
 try {
@@ -40,6 +41,14 @@ try {
             $input = json_body();
             $app = save_app($db, $input);
             json_response(['ok' => true, 'app' => $app, 'apps' => $db->apps(), 'widgets' => $db->widgets()]);
+
+        case 'apps/favicon':
+            require_method('POST');
+            $input = json_body();
+            $url = clean_url((string)($input['url'] ?? ''));
+            $verifyTls = !array_key_exists('verify_tls', $input) || (bool)$input['verify_tls'];
+            $image = Favicon::detect($url, $verifyTls);
+            json_response(['ok' => true, 'image' => $image]);
 
         case 'apps/delete':
             require_method('POST');
@@ -125,6 +134,14 @@ try {
             require_method('POST');
             $id = trim((string)(json_body()['id'] ?? ''));
             $result = $integrations->test($id);
+            json_response(['ok' => true, 'data' => $result, 'integrations' => $integrations->list()]);
+
+        case 'integrations/action':
+            require_method('POST');
+            $input = json_body();
+            $id = trim((string)($input['id'] ?? ''));
+            $action = trim((string)($input['action'] ?? ''));
+            $result = $integrations->action($id, $action);
             json_response(['ok' => true, 'data' => $result, 'integrations' => $integrations->list()]);
 
         case 'search':
@@ -239,11 +256,25 @@ function save_app(Database $db, array $input): array
     $category = mb_substr(trim(strip_tags((string)($input['category'] ?? ''))), 0, 80);
     $image = clean_image((string)($input['image'] ?? ''));
     $now = gmdate(DATE_ATOM);
-    $existingStmt = $db->pdo()->prepare('SELECT id,position,created_at FROM apps WHERE id=:id');
+    $existingStmt = $db->pdo()->prepare('SELECT id,position,created_at,image,url FROM apps WHERE id=:id');
     $existingStmt->execute(['id' => $id]);
     $existing = $existingStmt->fetch();
     $position = $existing ? (int)$existing['position'] : (int)$db->pdo()->query('SELECT COALESCE(MAX(position),-1)+1 FROM apps')->fetchColumn();
     $created = $existing['created_at'] ?? $now;
+
+    $refreshFavicon = !empty($input['refresh_favicon']);
+    if ($image === '' && (!$existing || empty($existing['image']) || $refreshFavicon)) {
+        try {
+            $detected = Favicon::detect($url, !array_key_exists('favicon_verify_tls', $input) || (bool)$input['favicon_verify_tls']);
+            $image = $detected !== '' ? $detected : (string)($existing['image'] ?? '');
+        } catch (Throwable) {
+            // Favicon lookup is best-effort and must never prevent saving an app.
+            $image = (string)($existing['image'] ?? '');
+        }
+    } elseif ($image === '' && $existing) {
+        $image = (string)($existing['image'] ?? '');
+    }
+
     $stmt = $db->pdo()->prepare(
         'INSERT INTO apps(id,name,url,description,category,image,position,created_at,updated_at) VALUES(:id,:name,:url,:description,:category,:image,:position,:created,:updated) '
         . 'ON CONFLICT(id) DO UPDATE SET name=excluded.name,url=excluded.url,description=excluded.description,category=excluded.category,image=excluded.image,updated_at=excluded.updated_at'
@@ -251,7 +282,7 @@ function save_app(Database $db, array $input): array
     $stmt->execute(compact('id','name','url','description','category','image','position','created') + ['updated' => $now]);
 
     if (!$existing && !empty($input['add_to_dashboard'])) {
-        create_widget($db, null, ['type' => 'app', 'config' => ['app_id' => $id], 'w' => 3, 'h' => 2]);
+        create_widget($db, null, ['type' => 'app', 'config' => ['app_id' => $id], 'w' => 2, 'h' => 1]);
     }
 
     $stmt = $db->pdo()->prepare('SELECT * FROM apps WHERE id=:id');
@@ -285,7 +316,8 @@ function create_widget(Database $db, $addons, array $input): array
     $dashboard = $db->defaultDashboardId();
     $config = is_array($input['config'] ?? null) ? $input['config'] : [];
     $title = mb_substr(trim(strip_tags((string)($input['title'] ?? ''))), 0, 100);
-    $w = max(2, min(12, (int)($input['w'] ?? 3)));
+    $minW = $type === 'app' ? 1 : 2;
+    $w = max($minW, min(12, (int)($input['w'] ?? 3)));
     $h = max(1, min(8, (int)($input['h'] ?? 2)));
     $x = max(0, min(11, (int)($input['x'] ?? 0)));
     $maxY = (int)$db->pdo()->query('SELECT COALESCE(MAX(y+h),0) FROM widgets')->fetchColumn();
@@ -316,13 +348,16 @@ function update_widget(Database $db, array $input): void
 function save_layout(Database $db, mixed $items): void
 {
     if (!is_array($items)) return;
+    $types = [];
+    foreach ($db->widgets() as $widget) $types[(string)$widget['id']] = (string)$widget['type'];
     $stmt = $db->pdo()->prepare('UPDATE widgets SET x=:x,y=:y,w=:w,h=:h,updated_at=:updated WHERE id=:id');
-    $db->transaction(function() use ($items,$stmt): void {
+    $db->transaction(function() use ($items,$stmt,$types): void {
         foreach ($items as $item) {
             if (!is_array($item)) continue;
             $id = trim((string)($item['id'] ?? ''));
             if ($id === '') continue;
-            $w = max(2, min(12, (int)($item['w'] ?? 3)));
+            $minW = (($types[$id] ?? '') === 'app') ? 1 : 2;
+            $w = max($minW, min(12, (int)($item['w'] ?? 3)));
             $h = max(1, min(8, (int)($item['h'] ?? 2)));
             $x = max(0, min(12-$w, (int)($item['x'] ?? 0)));
             $y = max(0, (int)($item['y'] ?? 0));

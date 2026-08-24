@@ -4,11 +4,15 @@
 
 Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a flexible dashboard, service integrations and installable PenguHub packages in one lightweight self-hosted interface.
 
-> **Status:** `2.0.0-alpha.2` — this branch is an architectural preview and migration build. Back up your existing `apps.json` before testing an upgrade.
+> **Status:** `2.0.0-alpha.4` — this branch is an architectural preview and migration build. Back up your existing `apps.json` before testing an upgrade.
 
 ## What is new in 2.0
 
 - Flexible dashboard with resizable and draggable widgets
+- Adaptive app shortcuts from compact 1×1 tiles to larger cards
+- High-density app library with search, category chips and compact/detail views
+- Automatic server-side favicon discovery for app shortcuts
+- Pi-hole and AdGuard Home protection controls directly from dashboard widgets
 - Separate **Apps**, **Integrations**, **PenguHub** and **Settings** areas
 - Global search / command palette with `Ctrl + K`
 - SQLite instead of using one JSON file as the application database
@@ -27,8 +31,8 @@ PenguHub is the extension layer of PenguLab. The alpha ships with a small curate
 | Package | Type | Purpose |
 | --- | --- | --- |
 | **IP Manager** | Add-on + widget | Networks, VLANs and assigned IP addresses |
-| **Pi-hole** | Integration + widget | Pi-hole v6 query/blocking summary |
-| **AdGuard Home** | Integration + widget | DNS query, blocking and protection status |
+| **Pi-hole** | Integration + widget | Pi-hole v6 statistics + protection controls |
+| **AdGuard Home** | Integration + widget | DNS statistics + protection controls |
 | **OPNsense** | Integration + widget | Read-only firewall/system health |
 | **RSS** | Widget | RSS/Atom news feeds on the dashboard |
 | **Generic API** | Integration + widget | Display simple values from an arbitrary JSON API |
@@ -73,6 +77,8 @@ Browser
 
 Secrets are encrypted in SQLite and are not included in normal JSON exports.
 
+Pi-hole and AdGuard Home widgets can optionally perform a small, explicit set of control actions: **resume protection**, **pause for 5 minutes**, and **pause indefinitely**. These actions are proxied through PenguLab; credentials remain server-side. OPNsense stays read-only in the current alpha.
+
 ## Release channels
 
 PenguLab uses separate Docker channels so test builds cannot replace the production image:
@@ -81,9 +87,9 @@ PenguLab uses separate Docker channels so test builds cannot replace the product
 | --- | --- | --- |
 | Stable GitHub release | `latest` | Production |
 | GitHub pre-release | `prerelease` | Alpha / beta / RC testing |
-| Every release | exact release tag, e.g. `2.0.0-alpha.2` | Pinning / reproducible tests |
+| Every release | exact release tag, e.g. `2.0.0-alpha.4` | Pinning / reproducible tests |
 
-A GitHub **pre-release never updates `latest`**. Publishing `2.0.0-alpha.2` as a pre-release therefore publishes both `:2.0.0-alpha.2` and `:prerelease`, while the last stable build remains on `:latest`.
+A GitHub **pre-release never updates `latest`**. Publishing `2.0.0-alpha.4` as a pre-release therefore publishes both `:2.0.0-alpha.4` and `:prerelease`, while the last stable build remains on `:latest`.
 
 > **Note for `2.0.0-alpha.1`:** the first alpha workflow still tagged every published release as `latest`. If that workflow already ran, re-publish the last stable source (for example `1.0.3`) with the workflow's manual **stable** channel once. The corrected workflow in alpha.2 prevents this for future pre-releases.
 
@@ -125,8 +131,8 @@ http://YOURDOCKERHOST:19961
 ### Testing this alpha from the source tree
 
 ```bash
-docker build -t pengulab:2.0-alpha.2 .
-docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0-alpha.2
+docker build -t pengulab:2.0-alpha.3 .
+docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0-alpha.3
 ```
 
 ## Proxmox VE LXC
@@ -166,7 +172,7 @@ To pin the test LXC to this exact pre-release instead:
 
 ```bash
 pct enter <TEST-CTID>
-pengulabctl version 2.0.0-alpha.2
+pengulabctl version 2.0.0-alpha.4
 pengulabctl update
 ```
 
@@ -294,7 +300,7 @@ PenguLab/
 - Add-ons are disabled until installed/activated in PenguHub.
 - Integration secrets are encrypted with `secret.key` using Sodium Secretbox.
 - Integration requests run server-side.
-- HTTP clients follow neither arbitrary browser redirects nor `file://` URLs.
+- Integration connectors do not follow redirects or `file://` URLs. Favicon discovery follows at most three HTTP(S)-only redirects.
 - Only HTTP/HTTPS integration endpoints are accepted.
 - TLS certificate verification is enabled by default and can be disabled per integration for explicitly trusted self-signed internal services.
 - OPNsense support is intentionally **read-only** in this first version.
