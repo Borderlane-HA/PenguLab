@@ -1,53 +1,90 @@
-# PenguLab
+# PenguLab 2.0
 
-PenguLab is a modern, self-hosted start page for your homelab, server tools, smart home, and web applications.
+**PenguLab is a self-hosted Homelab Control Center.**
 
-It is built with plain PHP and JSON, requires no database, and provides a clean tile-based dashboard with categories, configurable grid layouts, drag-and-drop sorting, dark/light mode, import/export, and language pack support.
+Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a flexible dashboard, service integrations and installable PenguHub packages in one lightweight self-hosted interface.
 
-## Features
+> **Status:** `2.0.0-alpha.1` — this branch is an architectural preview and migration build. Back up your existing `apps.json` before testing an upgrade.
 
-- Modern tile-based start page
-- Self-hosted, lightweight, and database-free
-- Categories for grouping apps
-- Shared UI settings stored in `apps.json`
-- Configurable grid layout
-- Dark mode / light mode
-- Drag and drop sorting in edit mode
-- Clone existing tiles
-- JSON export / import
-- Multi-language support through `lang` files
-- Automatic detection of additional language packs
-- Simple deployment on any standard PHP web server
-- Addons
+## What is new in 2.0
 
-## IP Manager Addon
+- Flexible dashboard with resizable and draggable widgets
+- Separate **Apps**, **Integrations**, **PenguHub** and **Settings** areas
+- Global search / command palette with `Ctrl + K`
+- SQLite instead of using one JSON file as the application database
+- Server-side integration requests: credentials are never sent back to dashboard widgets
+- Encrypted integration secrets using PHP Sodium
+- TLS verification enabled by default
+- Automatic migration of PenguLab 1.x apps, settings and IP Manager data
+- JSON configuration export/import without secrets
+- Responsive light/dark/system UI
+- Add-on architecture that keeps optional features outside the PenguLab core
 
-Organize your networks, DHCP ranges, DNS servers, VLANs, reservations, and hosts in one clean view. The IP Manager addon helps you document subnets, keep track of assigned and free IP addresses, and quickly spot DHCP-related overlaps before they become a problem.
-```bash
-http://YOURDOCKERHOST:19961/index.php?addon=ipmanager
+## PenguHub
+
+PenguHub is the extension layer of PenguLab. The alpha ships with a small curated local catalog:
+
+| Package | Type | Purpose |
+| --- | --- | --- |
+| **IP Manager** | Add-on + widget | Networks, VLANs and assigned IP addresses |
+| **Pi-hole** | Integration + widget | Pi-hole v6 query/blocking summary |
+| **AdGuard Home** | Integration + widget | DNS query, blocking and protection status |
+| **OPNsense** | Integration + widget | Read-only firewall/system health |
+| **RSS** | Widget | RSS/Atom news feeds on the dashboard |
+| **Generic API** | Integration + widget | Display simple values from an arbitrary JSON API |
+
+In this first alpha the packages are **bundled with PenguLab and activated from PenguHub**. A remote, signed package repository is deliberately not part of the first build. This keeps the trust and update model small while the add-on API stabilizes.
+
+## IP Manager 2.0
+
+The IP Manager is no longer part of the PenguLab core. It is an installable PenguHub package.
+
+Its UI has been redesigned around the things you actually use:
+
+- create a network with only **name + CIDR**; VLAN is optional
+- gateway, DNS and DHCP ranges are under **Advanced network settings**
+- only assigned/documented addresses are listed
+- search by IP, hostname or MAC
+- suggest a free address automatically
+- distinguish Static, Reservation and observed DHCP addresses
+- show used/free capacity instead of rendering every empty IP in a subnet
+- optionally add an IP Manager summary widget to the main dashboard
+
+The data model also keeps a `source` field, so a future OPNsense/Kea sync can distinguish imported data from PenguLab documentation.
+
+## Integrations
+
+An **App**, an **Integration** and a **Widget** are separate objects:
+
+- **App** — a shortcut to a service
+- **Integration** — a server-side API connection to that service
+- **Widget** — a dashboard view using an app, integration or add-on
+
+This means one OPNsense or AdGuard Home connection can later power several widgets without duplicating credentials.
+
+Integration traffic follows this path:
+
+```text
+Browser
+  -> PenguLab API
+      -> Integration connector
+          -> Pi-hole / AdGuard Home / OPNsense / custom API
 ```
+
+Secrets are encrypted in SQLite and are not included in normal JSON exports.
 
 ## Docker
 
-On the Docker host, create a new folder in your user home directory for PenguLab.
+Create a directory for the persistent PenguLab data:
 
 ```bash
-mkdir -p pengulab
+mkdir -p pengulab/data
 cd pengulab
-touch apps.json
-chmod 666 apps.json
 ```
 
-```bash
-docker pull ghcr.io/borderlane-ha/pengulab:latest
-```
+Example `compose.yml`:
 
-```bash
-nano compose.yml
-```
-
-compose.yml:
-```bash
+```yaml
 services:
   pengulab:
     image: ghcr.io/borderlane-ha/pengulab:latest
@@ -56,345 +93,136 @@ services:
     ports:
       - "19961:8080"
     volumes:
-      - ./apps.json:/app/apps.json
+      - ./data:/app/data
 ```
 
-Strg X -> Y -> Enter
+Then start it:
 
 ```bash
 docker compose up -d
 ```
 
-open
-```bash
+Open:
+
+```text
 http://YOURDOCKERHOST:19961
-http://YOURDOCKERHOST:19961/index.php?category=YOURCATEGORY
-http://YOURDOCKERHOST:19961/index.php?addon=ipmanager
 ```
 
+### Testing this alpha from the source tree
 
-## Screenshots
+```bash
+docker build -t pengulab:2.0-alpha .
+docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0-alpha
+```
 
-### Light Mode
-![PenguLab Light Mode](screenshot01.png)
+## Upgrading from PenguLab 1.x
 
-### Dark Mode
-![PenguLab Dark Mode](screenshot03.png)
+PenguLab 2.0 can import the old `apps.json` on first start.
 
-### Settings
-![PenguLab Settings](screenshot02.png)
+1. Back up the old file.
+2. Use the new persistent `/app/data` directory.
+3. Make the old `apps.json` available at `/app/apps.json` for the first 2.0 start.
+4. Start PenguLab 2.0.
+5. PenguLab creates `/app/data/pengulab.sqlite` and imports the legacy data once.
 
-## Requirements (Self hosting no Docker)
+Example migration compose:
 
-- PHP **8.1+**
-- A web server that can run PHP, for example:
-  - Apache
-  - Nginx + PHP-FPM
-  - Lighttpd
-  - shared hosting with PHP support
-- Write permissions for:
-  - `apps.json`
-  - the PenguLab project directory, if `apps.json` does not exist yet
+```yaml
+services:
+  pengulab:
+    image: pengulab:2.0-alpha
+    ports:
+      - "19961:8080"
+    volumes:
+      - ./data:/app/data
+      - ./apps.json:/app/apps.json:ro
+```
 
-## Project Structure
+The migration imports:
+
+- app shortcuts
+- light/dark language settings that still map to 2.0
+- existing IP Manager networks and devices
+- an existing `?addon=ipmanager` shortcut also activates the IP Manager package
+
+After you have verified the migration, the read-only `apps.json` mount can be removed. PenguLab 2.0 then operates from `data/pengulab.sqlite`.
+
+## Backups
+
+For a complete backup, back up the entire `data/` directory. It contains:
+
+```text
+data/
+├── pengulab.sqlite
+└── secret.key
+```
+
+The in-app JSON export is intended for portable dashboard/app configuration and **does not export integration credentials**.
+
+Keep `secret.key` together with the database when restoring encrypted integration credentials.
+
+## Self-hosting without Docker
+
+PenguLab 2.0 requires:
+
+- PHP 8.3+
+- PDO SQLite (`pdo_sqlite`)
+- cURL (`curl`)
+- SimpleXML (`simplexml`)
+- Sodium (`sodium`)
+- Multibyte String (`mbstring`)
+- write permission for the configured data directory
+
+Set `PENGULAB_DATA_DIR` if your writable data directory is not `./data`.
+
+## Project structure
 
 ```text
 PenguLab/
-├── index.php
-├── apps.json
-└── lang/
-    ├── de.json
-    └── en.json
+├── index.php                 # UI shell and add-on routing
+├── api.php                   # Core JSON API
+├── bootstrap.php             # Core services / autoloading
+├── assets/
+│   ├── css/app.css
+│   └── js/app.js
+├── src/                      # Core services
+│   ├── AddonManager.php
+│   ├── Database.php
+│   ├── IntegrationManager.php
+│   └── Secrets.php
+├── addons/                   # Bundled PenguHub packages
+│   ├── ipmanager/
+│   ├── pihole/
+│   ├── adguardhome/
+│   ├── opnsense/
+│   ├── rss/
+│   └── generic-api/
+├── data/                     # persistent runtime data (volume)
+├── docs/
+└── legacy/                   # reference copies of the 1.x implementation
 ```
 
-## Installation
+## Security model
 
-### 1. Upload the files
+- Add-ons are disabled until installed/activated in PenguHub.
+- Integration secrets are encrypted with `secret.key` using Sodium Secretbox.
+- Integration requests run server-side.
+- HTTP clients follow neither arbitrary browser redirects nor `file://` URLs.
+- Only HTTP/HTTPS integration endpoints are accepted.
+- TLS certificate verification is enabled by default and can be disabled per integration for explicitly trusted self-signed internal services.
+- OPNsense support is intentionally **read-only** in this first version.
+- Non-GET API requests require a session CSRF token.
 
-Upload the following files to your web server:
+PenguHub currently trusts packages bundled with the PenguLab image. Remote third-party code installation should not be enabled until package signing, permissions and update verification are implemented.
 
-- `index.php`
-- `apps.json`
-- the folder `lang/` including at least:
-  - `lang/de.json`
-  - `lang/en.json`
+## Development
 
-### 2. Make sure `apps.json` is writable
+See:
 
-PenguLab stores app data and shared UI settings in `apps.json`.
-
-On Linux systems, for example:
-
-```bash
-chmod 664 apps.json
-```
-
-If needed, also ensure the web server user can write to the project directory.
-
-### 3. Open PenguLab in your browser
-
-Navigate to the folder or domain where you uploaded the project.
-
-Example:
-
-```text
-https://your-local-domain.example/pengulab/
-```
-
-That is all. No database setup is required.
-
-## First Start
-
-When PenguLab starts for the first time, it reads its data from `apps.json`.
-
-The application stores the following shared settings there:
-
-- selected category
-- grid columns and rows
-- dark/light mode
-- selected language
-
-Because these settings are stored in JSON, they are shared across browsers and devices.
-
-## How PenguLab Stores Data
-
-PenguLab stores both application tiles and UI settings inside `apps.json`.
-
-Example structure:
-
-```json
-{
-  "settings": {
-    "selectedCategory": "all",
-    "viewMode": "custom",
-    "rows": 3,
-    "cols": 5,
-    "theme": "light",
-    "language": "de"
-  },
-  "apps": [
-    {
-      "id": "a1b2c3d4",
-      "name": "Home Assistant",
-      "url": "https://ha.example.local",
-      "description": "Smart home dashboard",
-      "category": "Smart Home",
-      "image": ""
-    }
-  ]
-}
-```
-
-### Backward compatibility
-
-Older `apps.json` files that only contain a plain app array are still read correctly.
-
-After the next save operation, PenguLab writes the newer object-based structure automatically.
-
-## Usage
-
-### Add a new tile
-
-1. Open the settings panel
-2. Click **New App**
-3. Fill in:
-   - app name
-   - URL
-   - description
-   - category
-   - image/logo
-4. Click **Save**
-
-### Edit a tile
-
-1. Open the settings panel
-2. Click **Edit**
-3. Use the edit button on a tile
-4. Change the values
-5. Click **Save**
-
-### Clone a tile
-
-1. Edit an existing tile
-2. Click **Clone**
-3. Change the values you want
-4. Save it as a new tile
-
-### Reorder tiles
-
-1. Open the settings panel
-2. Click **Edit**
-3. Drag and drop the tiles into the order you want
-4. The order is saved automatically
-
-### Change the grid size
-
-In the settings panel, change the grid row and column values.
-
-PenguLab saves the new grid immediately when the inputs lose focus or when you confirm with Enter.
-
-### Change the language
-
-Open the settings panel and choose a language in the language dropdown.
-
-The selected language is stored in `apps.json`.
-
-### Change the theme
-
-Use the sun/moon buttons in the settings panel to switch between light mode and dark mode.
-
-The selected theme is stored in `apps.json`.
-
-## Language Packs
-
-PenguLab loads language packs from the `lang/` folder.
-
-Any additional language file placed there is detected automatically and becomes selectable in the language dropdown.
-
-### File naming
-
-Use this format:
-
-```text
-lang/<language-code>.json
-```
-
-Examples:
-
-```text
-lang/de.json
-lang/en.json
-lang/fr.json
-lang/es.json
-```
-
-### Recommended language file format
-
-```json
-{
-  "_meta": {
-    "label": "English"
-  },
-  "brand": "PenguLab",
-  "apps": "Apps",
-  "settings": "Settings",
-  "settings_language": "Language",
-  "settings_category": "Category",
-  "settings_grid": "Grid",
-  "settings_design": "Appearance",
-  "settings_actions": "Actions",
-  "settings_configuration": "Configuration",
-  "all_categories": "All categories",
-  "uncategorized": "Uncategorized",
-  "edit": "Edit",
-  "done": "Done",
-  "new_app": "New App",
-  "export": "Export",
-  "import": "Import",
-  "dialog_create": "Create app",
-  "dialog_edit": "Edit app",
-  "dialog_clone": "Clone tile",
-  "field_name": "App name",
-  "field_url": "URL",
-  "field_description": "Description",
-  "field_category": "Category",
-  "field_image": "Logo / Image",
-  "image_hint": "Uploaded logos are automatically checked for transparent borders so they appear larger and more consistent.",
-  "save": "Save",
-  "cancel": "Cancel",
-  "remove_image": "Remove logo",
-  "clone": "Clone",
-  "delete": "Delete app",
-  "prev": "← Back",
-  "next": "Next →",
-  "no_description": "No description available.",
-  "confirm_delete": "Really delete “{name}”?",
-  "light": "Light mode",
-  "dark": "Dark mode",
-  "page_of": "Page {current} / {total}"
-}
-```
-
-### Notes
-
-- `_meta.label` is used as the human-readable language name in the dropdown
-- the filename (for example `en.json`) is used as the language code
-- if a selected language file is missing, PenguLab falls back to German (`de`)
-
-## Import and Export
-
-PenguLab supports JSON export and import through the settings panel.
-
-### Export
-
-Exports the current:
-
-- apps
-- categories
-- grid settings
-- theme
-- language
-- tile order
-
-### Import
-
-Imports a previously exported PenguLab JSON file.
-
-This makes migration or backup very easy.
-
-## Logo Handling
-
-When you upload a logo, PenguLab automatically checks transparent borders and trims them where possible so the logo appears larger and more consistent inside the tile.
-
-This helps especially with PNG logos that contain a lot of empty transparent space.
-
-## Updating PenguLab
-
-To update PenguLab:
-
-1. Back up your current files
-2. Replace `index.php`
-3. Keep your existing:
-   - `apps.json`
-   - `lang/` folder
-4. Reload the page
-
-## Customization Ideas
-
-Category view: index.php?category=YOURCATEGORY
-
-## Troubleshooting
-
-### Changes are not saved
-
-Check write permissions for `apps.json`.
-
-### The language dropdown is empty
-
-Make sure the `lang/` folder exists and contains valid JSON files.
-
-### A newly added language does not appear
-
-Check:
-
-- file extension is `.json`
-- JSON is valid
-- `_meta.label` is set
-- the file is placed directly inside `lang/`
-
-### The page looks broken after an update
-
-Make sure all required files were uploaded together:
-
-- `index.php`
-- `apps.json`
-- `lang/de.json`
-- `lang/en.json`
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — core/add-on boundaries and data model
+- [`docs/ADDONS.md`](docs/ADDONS.md) — PenguHub manifest and connector model
+- [`ROADMAP.md`](ROADMAP.md) — planned 2.0 milestones
 
 ## License
 
-License: **MIT**
-
-## About the Project
-
-PenguLab was designed as a clean, modern, self-hosted launcher for homelab and infrastructure services, while staying simple enough to deploy on almost any PHP-capable web server.
+See [LICENSE](LICENSE).
