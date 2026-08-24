@@ -83,7 +83,10 @@ select_template() {
 
   if ! pveam list "$storage" 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fqx "$storage:vztmpl/$template"; then
     info "Downloading $template to $storage..." >&2
-    pveam download "$storage" "$template"
+    # select_template is used inside command substitution. Keep pveam's
+    # progress output out of stdout, otherwise it becomes part of the
+    # ostemplate value passed to `pct create`.
+    pveam download "$storage" "$template" >&2
   else
     info "Using cached template $template." >&2
   fi
