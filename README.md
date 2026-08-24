@@ -4,7 +4,7 @@
 
 Instead of being only a start page, PenguLab 2.1 combines fast app shortcuts, a flexible dashboard, service integrations and installable PenguHub packages in one lightweight self-hosted interface.
 
-> **Stable release:** `2.1.0`. Existing PenguLab 2.0 installations upgrade in place and keep the same SQLite data volume. A backup of `data/` is still recommended before upgrading.
+> **Stable release:** `2.1.1`. Existing PenguLab 2.0 installations upgrade in place and keep the same SQLite data volume. A backup of `data/` is still recommended before upgrading.
 
 ## What is new in 2.1
 
@@ -251,11 +251,11 @@ For alpha/beta testing, create a **second LXC** instead of changing the producti
 
 This leaves the stable LXC on `ghcr.io/borderlane-ha/pengulab:latest` and creates the test LXC from `:prerelease`. Use a different CTID/hostname and preferably temporary or copied data.
 
-To pin an LXC to the stable 2.1.0 release instead:
+To pin an LXC to the stable 2.1.1 release instead:
 
 ```bash
 pct enter <TEST-CTID>
-pengulabctl version 2.1.0
+pengulabctl version 2.1.1
 pengulabctl update
 ```
 

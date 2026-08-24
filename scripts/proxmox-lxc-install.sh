@@ -296,7 +296,7 @@ Usage:
   pengulabctl update
   pengulabctl channel stable
   pengulabctl channel prerelease
-  pengulabctl version 2.1.0
+  pengulabctl version 2.1.1
   pengulabctl backup [target.tar.gz]
   pengulabctl logs
   pengulabctl restart
@@ -320,7 +320,8 @@ case "${1:-}" in
 esac
 CTL
   chmod +x "$tmp"
-  pct push "$ctid" "$tmp" /usr/local/sbin/pengulabctl --perms 0755
+  pct push "$ctid" "$tmp" /usr/local/bin/pengulabctl --perms 0755
+  pct exec "$ctid" -- ln -sfn /usr/local/bin/pengulabctl /usr/local/sbin/pengulabctl
   rm -f "$tmp"
 }
 
@@ -372,7 +373,7 @@ main() {
     1) tag="latest"; channel_label="Stable" ;;
     2) tag="prerelease"; channel_label="Pre-release" ;;
     3)
-      prompt tag "Exact Docker release tag (e.g. 2.1.0)" "2.1.0"
+      prompt tag "Exact Docker release tag (e.g. 2.1.1)" "2.1.1"
       validate_tag "$tag"
       channel_label="Pinned: $tag"
       ;;

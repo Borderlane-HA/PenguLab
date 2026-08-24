@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.1
+
+### Fixed
+
+- Fixed the sidebar/footer version label still showing `2.0 alpha`; UI version labels now come from the central `VERSION` file.
+- Fixed dashboard edit mode not showing drag handles, widget remove/settings controls, or resize grips after entering `Layout bearbeiten`.
+- Fixed new Proxmox LXC installs placing `pengulabctl` only in `/usr/local/sbin`; it is now installed in `/usr/local/bin` with a compatibility symlink in `/usr/local/sbin`.
+
 ## 2.1.0
 
 ### Added

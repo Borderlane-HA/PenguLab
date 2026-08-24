@@ -21,17 +21,19 @@ function icon(string $name): string
     return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' . $path . '</svg>';
 }
 
-function renderSidebar(AddonManager $addons, string $active = 'dashboard', ?Auth $auth = null): void
+function renderSidebar(AddonManager $addons, string $active = 'dashboard', ?Auth $auth = null, string $version = 'dev'): void
 {
     $ipm = $addons->enabled('ipmanager') && (!$auth || $auth->canIpManager());
     $admin = !$auth || $auth->isAdmin();
     $hasIntegrations = !$auth || $auth->isAdmin() || count($auth->user()['permissions']['integrations'] ?? []) > 0;
+    $version = trim($version) !== '' ? trim($version) : 'dev';
+    $badgeVersion = preg_match('/^(\d+\.\d+)/', $version, $m) ? $m[1] : $version;
     ?>
     <aside class="sidebar" id="sidebar">
       <div class="brand-row"><a class="brand" href="./#dashboard" aria-label="PenguLab">
         <span class="brand-mark"><span></span><span></span></span>
         <span class="brand-name">PenguLab</span>
-        <span class="alpha-badge">2.0</span>
+        <span class="alpha-badge"><?= htmlspecialchars($badgeVersion) ?></span>
       </a><button class="sidebar-collapse-btn" data-sidebar-collapse type="button" title="Seitenleiste ausblenden" aria-label="Seitenleiste ausblenden"><?= icon('collapse') ?></button></div>
       <nav class="primary-nav">
         <a class="nav-item <?= $active==='dashboard'?'active':'' ?>" href="./#dashboard"><?= icon('dashboard') ?><span>Dashboard</span></a>
@@ -49,7 +51,7 @@ function renderSidebar(AddonManager $addons, string $active = 'dashboard', ?Auth
       <nav class="primary-nav sidebar-bottom">
         <a class="nav-item <?= $active==='settings'?'active':'' ?>" href="./#settings"><?= icon('settings') ?><span>Einstellungen</span></a>
       </nav>
-      <div class="sidebar-version">PenguLab <b>2.0 alpha</b></div>
+      <div class="sidebar-version">PenguLab <b><?= htmlspecialchars($version) ?></b></div>
     </aside>
     <?php
 }

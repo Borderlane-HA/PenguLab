@@ -6,7 +6,7 @@ try {
     require_once __DIR__ . '/src/View.php';
 } catch (\Throwable $e) {
     http_response_code(500);
-    ?><!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PenguLab setup error</title><style>body{font:16px system-ui;background:#f5f6fb;color:#18213a;padding:40px}.box{max-width:760px;margin:auto;background:#fff;border:1px solid #e2e5ef;border-radius:20px;padding:28px}code{background:#f0f2f8;padding:2px 6px;border-radius:6px}</style></head><body><div class="box"><h1>PenguLab could not start</h1><p><?= htmlspecialchars($e->getMessage()) ?></p><p>For PenguLab 2.0 make sure <code>pdo_sqlite</code>, <code>curl</code>, <code>simplexml</code> and <code>sodium</code> are available and the data directory is writable.</p></div></body></html><?php
+    ?><!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PenguLab setup error</title><style>body{font:16px system-ui;background:#f5f6fb;color:#18213a;padding:40px}.box{max-width:760px;margin:auto;background:#fff;border:1px solid #e2e5ef;border-radius:20px;padding:28px}code{background:#f0f2f8;padding:2px 6px;border-radius:6px}</style></head><body><div class="box"><h1>PenguLab could not start</h1><p><?= htmlspecialchars($e->getMessage()) ?></p><p>For PenguLab make sure <code>pdo_sqlite</code>, <code>curl</code>, <code>simplexml</code> and <code>sodium</code> are available and the data directory is writable.</p></div></body></html><?php
     exit;
 }
 
@@ -59,7 +59,7 @@ $assetVersion = rawurlencode($version);
 </head>
 <body class="<?= $auth->preference('sidebar_collapsed', false) ? 'sidebar-collapsed' : '' ?>">
 <div class="shell">
-  <?php \PenguLab\renderSidebar($addons, $active, $auth); ?>
+  <?php \PenguLab\renderSidebar($addons, $active, $auth, $version); ?>
   <div class="workspace">
     <?php if ($addonEntry): ?>
       <header class="topbar addon-topbar">

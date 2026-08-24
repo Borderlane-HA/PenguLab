@@ -164,6 +164,9 @@
   }
 
   function renderDashboard() {
+    // renderDashboard() is also called directly while entering/leaving layout edit mode.
+    // Keep the body state in sync so drag handles, delete buttons and resize grips are visible.
+    document.body.classList.toggle('editing', state.editMode);
     const widgets = state.boot.widgets || [];
     const title = state.boot.settings?.dashboard_title || 'My Homelab';
     const dashboardActions=isAdmin()?(state.editMode
