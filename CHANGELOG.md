@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.0
+
+- Added the new PenguLab penguin logo to the real application, login page and browser favicon.
+- Removed the version badge from the top-left brand area; version remains available in the sidebar footer.
+- Refreshed the login screen with the new dark PenguLab visual language.
+- Home Assistant entity widgets can now shrink to 1×1 and automatically switch between compact and tile layouts.
+- Zabbix widgets can configure how many recent problems are displayed (3, 5, 10, 15 or 20).
+- OPNsense gateway latency now uses the current gateway status API with legacy fallback.
+- OPNsense WireGuard monitoring now shows peer counts, peer names, status and latest handshake information.
+- Browser favicon URLs are versioned to avoid stale browser cache after upgrades.
+
 ## 2.2.1
 
 - Refined the README with a more inviting, user-friendly structure and updated hero presentation.

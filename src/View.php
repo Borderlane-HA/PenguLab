@@ -27,13 +27,11 @@ function renderSidebar(AddonManager $addons, string $active = 'dashboard', ?Auth
     $admin = !$auth || $auth->isAdmin();
     $hasIntegrations = !$auth || $auth->isAdmin() || count($auth->user()['permissions']['integrations'] ?? []) > 0;
     $version = trim($version) !== '' ? trim($version) : 'dev';
-    $badgeVersion = preg_match('/^(\d+\.\d+)/', $version, $m) ? $m[1] : $version;
     ?>
     <aside class="sidebar" id="sidebar">
       <div class="brand-row"><a class="brand" href="./#dashboard" aria-label="PenguLab">
-        <span class="brand-mark"><span></span><span></span></span>
+        <img class="brand-logo-img" src="assets/img/pengulab-logo.png?v=<?= rawurlencode($version) ?>" alt="" aria-hidden="true">
         <span class="brand-name">PenguLab</span>
-        <span class="alpha-badge"><?= htmlspecialchars($badgeVersion) ?></span>
       </a><button class="sidebar-collapse-btn" data-sidebar-collapse type="button" title="Seitenleiste ausblenden" aria-label="Seitenleiste ausblenden"><?= icon('collapse') ?></button></div>
       <nav class="primary-nav">
         <a class="nav-item <?= $active==='dashboard'?'active':'' ?>" href="./#dashboard"><?= icon('dashboard') ?><span>Dashboard</span></a>

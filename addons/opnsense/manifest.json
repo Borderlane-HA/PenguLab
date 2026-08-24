@@ -1,10 +1,10 @@
 {
   "id": "opnsense",
   "name": "OPNsense",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "category": "Network",
   "author": "Borderlane-HA",
-  "description": "Read-only OPNsense health, gateways, automatically discovered interface traffic, WireGuard and ARP monitoring through API key/secret authentication.",
+  "description": "Read-only OPNsense health, gateways, live interface traffic, WireGuard peers and ARP monitoring through API key/secret authentication.",
   "icon": "firewall",
   "connector": "connector.php",
   "permissions": [
@@ -75,6 +75,36 @@
         "label": "WireGuard-Status anzeigen",
         "type": "boolean",
         "default": false
+      },
+      {
+        "key": "show_wireguard_peers",
+        "label": "WireGuard-Peers anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "wireguard_peer_limit",
+        "label": "Anzahl WireGuard-Peers",
+        "type": "select",
+        "default": "5",
+        "options": [
+          {
+            "value": "3",
+            "label": "3"
+          },
+          {
+            "value": "5",
+            "label": "5"
+          },
+          {
+            "value": "10",
+            "label": "10"
+          },
+          {
+            "value": "15",
+            "label": "15"
+          }
+        ]
       },
       {
         "key": "traffic_interface",

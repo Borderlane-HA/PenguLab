@@ -1,7 +1,7 @@
 {
   "id": "zabbix",
   "name": "Zabbix",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "category": "Monitoring",
   "author": "Borderlane-HA",
   "description": "Show monitored hosts and current Zabbix problems next to the rest of your Homelab.",
@@ -79,6 +79,34 @@
         "label": "Letzte Probleme anzeigen",
         "type": "boolean",
         "default": true
+      },
+      {
+        "key": "recent_problem_limit",
+        "label": "Anzahl angezeigter Probleme",
+        "type": "select",
+        "default": "5",
+        "options": [
+          {
+            "value": "3",
+            "label": "3"
+          },
+          {
+            "value": "5",
+            "label": "5"
+          },
+          {
+            "value": "10",
+            "label": "10"
+          },
+          {
+            "value": "15",
+            "label": "15"
+          },
+          {
+            "value": "20",
+            "label": "20"
+          }
+        ]
       }
     ]
   },

@@ -26,6 +26,19 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         return null;
     };
 
+    $post = static function(string $path, array $json = [], bool $required = false) use ($http, $base, $opts): ?array {
+        try {
+            $requestOpts = $opts;
+            $requestOpts['json'] = $json;
+            $result = $http->request('POST', $base . $path, $requestOpts);
+            if ($result['status'] >= 200 && $result['status'] < 300 && is_array($result['json'])) return $result['json'];
+            if ($required) throw new RuntimeException('OPNsense endpoint ' . $path . ' returned HTTP ' . $result['status'] . '.');
+        } catch (Throwable $e) {
+            if ($required) throw $e;
+        }
+        return null;
+    };
+
     $rows = static function(?array $payload): array {
         if (!$payload) return [];
         if (array_is_list($payload)) return array_values(array_filter($payload, 'is_array'));
@@ -79,8 +92,11 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     $memory = $get('/api/diagnostics/system/memory') ?? $get('/api/diagnostics/interface/get_memory_statistics') ?? [];
     $interfacePayload = $get('/api/diagnostics/interface/get_interface_statistics') ?? [];
     $interfaceNames = $get('/api/diagnostics/interface/get_interface_names') ?? [];
-    $gatewayPayload = $get('/api/routes/gateway/status') ?? [];
-    $wireguardPayload = $get('/api/wireguard/service/status') ?? [];
+    // Current OPNsense dashboard widgets read gateway status from routing/settings/search_gateway.
+    // Keep the legacy endpoint as a fallback for older releases.
+    $gatewayPayload = $get('/api/routing/settings/search_gateway') ?? $post('/api/routing/settings/search_gateway') ?? $get('/api/routes/gateway/status') ?? [];
+    $wireguardService = $get('/api/wireguard/service/status') ?? [];
+    $wireguardPayload = $get('/api/wireguard/service/show') ?? [];
 
     // OPNsense returns interface statistics as a keyed map under "statistics":
     //   "[WAN] (vtnet0) / 10.0.0.2" => { name, received-bytes, sent-bytes, ... }
@@ -193,16 +209,26 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     $gateway = null;
     $gatewayRows = $rows($gatewayPayload);
     if ($gatewayRows) {
+        // Prefer the active/default gateway. If that flag is unavailable, prefer an online gateway.
         $g = $gatewayRows[0];
         foreach ($gatewayRows as $candidate) {
-            $statusCandidate = strtolower((string)$scalar($candidate, ['status_translated','status'], ''));
-            if ($statusCandidate === 'online' || $statusCandidate === 'none' || $statusCandidate === 'ok') { $g = $candidate; break; }
+            if (!empty($candidate['defaultgw']) || !empty($candidate['default'])) { $g = $candidate; break; }
         }
+        if (empty($g['defaultgw']) && empty($g['default'])) {
+            foreach ($gatewayRows as $candidate) {
+                $statusCandidate = strtolower((string)$scalar($candidate, ['status_translated','status'], ''));
+                if ($statusCandidate === 'online' || $statusCandidate === 'none' || $statusCandidate === 'ok') { $g = $candidate; break; }
+            }
+        }
+        $delay = trim((string)$scalar($g, ['delay','rtt','latency'], ''));
+        if ($delay === '~') $delay = '';
+        $loss = trim((string)$scalar($g, ['loss','loss_percent','packet_loss'], ''));
+        if ($loss === '~') $loss = '';
         $gateway = [
             'name' => (string)$scalar($g, ['name','gateway','descr'], 'Gateway'),
             'status' => (string)$scalar($g, ['status_translated','status'], 'unknown'),
-            'delay' => (string)$scalar($g, ['delay','rtt','latency'], ''),
-            'loss' => (string)$scalar($g, ['loss','loss_percent','packet_loss'], ''),
+            'delay' => $delay,
+            'loss' => $loss,
         ];
     }
 
@@ -225,10 +251,34 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     };
     $memoryPercent = $findMemory($memory);
 
-    $wgText = strtolower(json_encode($wireguardPayload, JSON_UNESCAPED_SLASHES) ?: '');
+    $wgText = strtolower(json_encode($wireguardService, JSON_UNESCAPED_SLASHES) ?: '');
+    $peerRows = $rows($wireguardPayload);
+    $peers = [];
+    foreach ($peerRows as $row) {
+        if (strtolower((string)($row['type'] ?? '')) !== 'peer') continue;
+        $status = strtolower(trim((string)($row['peer-status'] ?? 'offline')));
+        if (!in_array($status, ['online','stale','offline'], true)) $status = 'offline';
+        $peers[] = [
+            'interface' => trim((string)($row['if'] ?? '')),
+            'name' => trim((string)($row['name'] ?? 'Peer')),
+            'status' => $status,
+            'allowed_ips' => trim((string)($row['allowed-ips'] ?? '')),
+            'latest_handshake' => $row['latest-handshake-epoch'] ?? null,
+            'rx' => $num($row['transfer-rx'] ?? null),
+            'tx' => $num($row['transfer-tx'] ?? null),
+        ];
+    }
+    usort($peers, static function(array $a, array $b): int {
+        $rank = ['online'=>0,'stale'=>1,'offline'=>2];
+        return ($rank[$a['status']] ?? 3) <=> ($rank[$b['status']] ?? 3) ?: strnatcasecmp($a['name'], $b['name']);
+    });
     $wireguard = [
-        'available' => $wireguardPayload !== [],
-        'running' => $wireguardPayload !== [] && !str_contains($wgText, 'stopped') && !str_contains($wgText, 'not running') && !str_contains($wgText, 'disabled'),
+        'available' => $wireguardService !== [] || $wireguardPayload !== [],
+        'running' => ($wireguardService !== [] || $wireguardPayload !== []) && !str_contains($wgText, 'stopped') && !str_contains($wgText, 'not running') && !str_contains($wgText, 'disabled'),
+        'peers' => $peers,
+        'online' => count(array_filter($peers, static fn(array $p): bool => $p['status'] === 'online')),
+        'stale' => count(array_filter($peers, static fn(array $p): bool => $p['status'] === 'stale')),
+        'offline' => count(array_filter($peers, static fn(array $p): bool => $p['status'] === 'offline')),
     ];
 
     $systemText = (string)($system['status'] ?? $system['message'] ?? 'API online');

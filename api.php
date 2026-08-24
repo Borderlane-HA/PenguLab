@@ -464,7 +464,7 @@ function create_widget(Database $db, $addons, array $input): array
     $dashboard = $db->defaultDashboardId();
     $config = is_array($input['config'] ?? null) ? $input['config'] : [];
     $title = mb_substr(trim(strip_tags((string)($input['title'] ?? ''))), 0, 100);
-    $minW = $type === 'app' ? 1 : 2;
+    $minW = in_array($type, ['app','homeassistant-entities'], true) ? 1 : 2;
     $w = max($minW, min(12, (int)($input['w'] ?? 3)));
     $h = max(1, min(8, (int)($input['h'] ?? 2)));
     $x = max(0, min(11, (int)($input['x'] ?? 0)));
@@ -523,7 +523,7 @@ function save_layout(Database $db, mixed $items): void
         if (isset($seen[$id])) throw new RuntimeException('Dashboard contains a duplicate widget.');
         $seen[$id] = true;
 
-        $minW = (($layout[$id]['type'] ?? '') === 'app') ? 1 : 2;
+        $minW = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 1 : 2;
         $w = max($minW, min(12, (int)($item['w'] ?? $layout[$id]['w'])));
         $h = max(1, min(8, (int)($item['h'] ?? $layout[$id]['h'])));
         $x = max(0, min(12-$w, (int)($item['x'] ?? $layout[$id]['x'])));
@@ -816,7 +816,7 @@ function import_data(array $ctx, mixed $data): void
                 $id = trim((string)($widget['id'] ?? '')) ?: Database::uuid('widget');
                 $now=gmdate(DATE_ATOM);
                 $type=(string)($widget['type']??'');
-                $minW=$type==='app'?1:2;
+                $minW=in_array($type,['app','homeassistant-entities'],true)?1:2;
                 $w=max($minW,min(12,(int)($widget['w']??3)));
                 $h=max(1,min(8,(int)($widget['h']??2)));
                 $x=max(0,min(12-$w,(int)($widget['x']??0)));

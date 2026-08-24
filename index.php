@@ -31,8 +31,8 @@ if (!$auth->check() && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset
 if (!$auth->check()) {
     $version = htmlspecialchars((string)($ctx['version'] ?? 'dev'));
     ?><!doctype html>
-    <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>PenguLab · Login</title><link rel="icon" type="image/png" href="favicon.png"><link rel="stylesheet" href="assets/css/app.css?v=<?= rawurlencode($version) ?>"></head>
-    <body class="login-page"><main class="login-wrap"><section class="login-card"><div class="login-brand"><span class="brand-mark"><span></span><span></span></span><div><strong>PenguLab</strong><span><?= $version ?></span></div></div><div class="eyebrow">Control Center</div><h1>Anmelden</h1><p>Dein Homelab-Dashboard, Integrationen und Add-ons.</p><?php if($loginError!==''): ?><div class="login-error"><?= htmlspecialchars($loginError) ?></div><?php endif; ?><form method="post" autocomplete="on"><input type="hidden" name="pengulab_login" value="1"><input type="hidden" name="csrf" value="<?= htmlspecialchars((string)$ctx['csrf']) ?>"><div class="field-row"><label>Benutzername</label><input name="username" autocomplete="username" required autofocus></div><div class="field-row"><label>Passwort</label><input name="password" type="password" autocomplete="current-password" required></div><label class="remember-line"><input type="checkbox" name="remember" value="1" checked><span>Angemeldet bleiben</span></label><button class="btn primary login-button" type="submit">Anmelden</button></form><div class="login-hint">Erstanmeldung: <code>admin</code> / <code>admin</code> · Passwort danach unter Einstellungen ändern.</div></section></main></body></html><?php
+    <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>PenguLab · Login</title><link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=<?= rawurlencode($version) ?>"><link rel="apple-touch-icon" href="assets/img/pengulab-logo.png?v=<?= rawurlencode($version) ?>"><link rel="stylesheet" href="assets/css/app.css?v=<?= rawurlencode($version) ?>"></head>
+    <body class="login-page"><main class="login-wrap"><section class="login-card"><div class="login-brand"><img class="login-logo" src="assets/img/pengulab-logo.png?v=<?= rawurlencode($version) ?>" alt="PenguLab"><div><strong>PenguLab</strong><span>Your self-hosted Control Center</span></div></div><div class="eyebrow">Control Center</div><h1>Willkommen zurück</h1><p>Dein Homelab, deine Dienste und Integrationen – an einem Ort.</p><?php if($loginError!==''): ?><div class="login-error"><?= htmlspecialchars($loginError) ?></div><?php endif; ?><form method="post" autocomplete="on"><input type="hidden" name="pengulab_login" value="1"><input type="hidden" name="csrf" value="<?= htmlspecialchars((string)$ctx['csrf']) ?>"><div class="field-row"><label>Benutzername</label><input name="username" autocomplete="username" required autofocus></div><div class="field-row"><label>Passwort</label><input name="password" type="password" autocomplete="current-password" required></div><label class="remember-line"><input type="checkbox" name="remember" value="1" checked><span>Angemeldet bleiben</span></label><button class="btn primary login-button" type="submit">Anmelden</button></form><div class="login-hint">Erstanmeldung: <code>admin</code> / <code>admin</code> · Passwort danach unter Einstellungen ändern.</div></section></main></body></html><?php
     exit;
 }
 
@@ -54,7 +54,8 @@ $assetVersion = rawurlencode($version);
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <title>PenguLab</title>
-  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=<?= htmlspecialchars($assetVersion) ?>">
+  <link rel="apple-touch-icon" href="assets/img/pengulab-logo.png?v=<?= htmlspecialchars($assetVersion) ?>">
   <link rel="stylesheet" href="assets/css/app.css?v=<?= htmlspecialchars($assetVersion) ?>">
 </head>
 <body class="<?= $auth->preference('sidebar_collapsed', false) ? 'sidebar-collapsed' : '' ?>">
@@ -64,7 +65,7 @@ $assetVersion = rawurlencode($version);
     <?php if ($addonEntry): ?>
       <header class="topbar addon-topbar">
         <button class="sidebar-open-btn" data-sidebar-open type="button" aria-label="Seitenleiste öffnen"><?= \PenguLab\icon('menu') ?></button>
-        <a class="mobile-brand" href="./#dashboard">PenguLab</a>
+        <a class="mobile-brand" href="./#dashboard"><img src="assets/img/pengulab-logo.png?v=<?= htmlspecialchars($assetVersion) ?>" alt="">PenguLab</a>
         <a class="back-link" href="./#dashboard"><?= \PenguLab\icon('back') ?> Dashboard</a>
         <div class="topbar-spacer"></div>
         <button class="topbar-search" type="button" onclick="location.href='./?search=1#dashboard'"><?= \PenguLab\icon('search') ?><span>Search</span><kbd>Ctrl K</kbd></button>
@@ -75,7 +76,7 @@ $assetVersion = rawurlencode($version);
     <?php else: ?>
       <header class="topbar">
         <button class="sidebar-open-btn" data-sidebar-open type="button" aria-label="Seitenleiste öffnen"><?= \PenguLab\icon('menu') ?></button>
-        <a class="mobile-brand" href="#dashboard">PenguLab</a>
+        <a class="mobile-brand" href="#dashboard"><img src="assets/img/pengulab-logo.png?v=<?= htmlspecialchars($assetVersion) ?>" alt="">PenguLab</a>
         <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Navigation">☰</button>
         <button class="topbar-search" id="globalSearchButton" type="button"><?= \PenguLab\icon('search') ?><span>Search apps, IPs, integrations…</span><kbd>Ctrl K</kbd></button>
         <div class="topbar-spacer"></div>

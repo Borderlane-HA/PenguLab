@@ -8,6 +8,8 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     $endpoint = str_ends_with(strtolower($base), '/api_jsonrpc.php') ? $base : $base . '/api_jsonrpc.php';
     $token = trim((string)($integration['_secrets']['api_token'] ?? ''));
     $verify = (bool)$integration['verify_tls'];
+    $config = is_array($integration['config'] ?? null) ? $integration['config'] : [];
+    $recentLimit = max(1, min(20, (int)($config['recent_problem_limit'] ?? 5)));
     if ($token === '') throw new RuntimeException('Zabbix API token is missing.');
 
     $rpcId = 0;
@@ -45,7 +47,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         'recent' => false,
         'sortfield' => ['eventid'],
         'sortorder' => 'DESC',
-        'limit' => 3,
+        'limit' => $recentLimit,
     ]);
     if (!is_array($problems)) $problems = [];
 
@@ -56,7 +58,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         'severity' => (int)($p['severity'] ?? 0),
         'clock' => (int)($p['clock'] ?? 0),
         'acknowledged' => (string)($p['acknowledged'] ?? '0') === '1',
-    ], array_slice($problems, 0, 3));
+    ], array_slice($problems, 0, $recentLimit));
 
     return [
         'service' => 'Zabbix',

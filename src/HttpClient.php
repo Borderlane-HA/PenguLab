@@ -19,7 +19,7 @@ final class HttpClient
 
         $ch = curl_init($url);
         if ($ch === false) throw new RuntimeException('Could not initialize HTTP client.');
-        $headers = ['Accept: application/json', 'User-Agent: PenguLab/2.2.1'];
+        $headers = ['Accept: application/json', 'User-Agent: PenguLab/2.3.0'];
         foreach (($options['headers'] ?? []) as $key => $value) {
             $headers[] = is_int($key) ? (string)$value : ($key . ': ' . $value);
         }

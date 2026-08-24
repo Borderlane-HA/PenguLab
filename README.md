@@ -14,9 +14,9 @@ It is built for people who want a fast overview, useful widgets and a setup that
 
 - **Unified overview** – keep your most important apps, widgets and services in one place.
 - **Real-time monitoring** – view live values, status information and small charts at a glance.
-- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE and Zabbix through PenguHub.
+- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE and Zabbix through PenguHub, including live gateway/WireGuard and monitoring details.
 - **Useful controls** – pause DNS protection or control selected Home Assistant entities right from the dashboard.
-- **Flexible layout** – move, resize and arrange widgets the way you like.
+- **Flexible layout** – move, resize and arrange widgets the way you like, from tiny Home Assistant controls to larger monitoring panels.
 - **Private by design** – your data stays on your own server.
 
 ## Overview
@@ -81,6 +81,30 @@ bash /tmp/pengulab-lxc-install.sh
 ```
 
 The installer creates an unprivileged LXC, installs Docker and deploys PenguLab for you.
+
+## Update PenguLab
+
+### Docker
+
+Open the folder that contains your `compose.yml` and run:
+
+```bash
+docker compose pull
+docker compose up -d --remove-orphans
+```
+
+Your data stays in the mounted `data/` folder.
+
+### Proxmox LXC
+
+Open the LXC in the Proxmox console or enter it from the Proxmox host:
+
+```bash
+pct enter <CTID>
+pengulabctl update
+```
+
+`pengulabctl update` creates a backup of the persistent PenguLab data before pulling and starting the new image.
 
 ## First login
 
