@@ -1,6 +1,6 @@
-# PenguLab 2.0 Roadmap
+# PenguLab Roadmap
 
-## Alpha 1 — foundation
+## PenguLab 2.0 — completed foundation
 
 - [x] SQLite core storage
 - [x] automatic 1.x app/settings migration
@@ -16,6 +16,7 @@
 - [x] RSS widget
 - [x] Generic JSON API connector
 - [x] encrypted server-side secrets
+- [x] Home Assistant entity integration (sensor, switch, light, cover)
 
 ## Alpha 2 — dashboard polish
 
@@ -48,8 +49,7 @@
 
 ## Later candidates
 
-- Proxmox
-- Home Assistant
+- Proxmox deeper metrics/actions
 - Uptime Kuma
 - EVCC
 - Nextcloud

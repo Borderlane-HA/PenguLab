@@ -70,11 +70,13 @@ A connector returns an associative array. The initial generic summary widget dis
 
 ## Permissions
 
-Permissions are currently descriptive metadata exposed by PenguHub. Alpha packages use values such as:
+Permissions are currently descriptive metadata exposed by PenguHub. Bundled packages use values such as:
 
 - `network.http`
 - `secrets.read`
 - `service.control` — package exposes a small explicit set of write actions (for example DNS protection pause/resume)
 - `storage.addon`
+
+The bundled Home Assistant package is an example of a connector with a package-specific widget. It uses a server-side Long-Lived Access Token and exposes only explicit controls for selected `switch`, `light` and `cover` entities.
 
 The future remote PenguHub should make permissions enforceable before third-party packages are supported.

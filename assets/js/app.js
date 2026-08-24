@@ -144,7 +144,7 @@
     const title = widget.title || widgetTitle(widget);
     const typeClass = `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
     const sizeClass = widget.type === 'app' ? (widget.w <= 1 ? 'app-widget-xs' : widget.w === 2 ? 'app-widget-sm' : 'app-widget-lg') : '';
-    const settingsButton = isAdmin() && widget.type === 'app' ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Darstellung">⚙</button>` : '';
+    const settingsButton = isAdmin() && ['app','homeassistant-entities'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
     return `<section class="widget ${typeClass} ${sizeClass}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2}">
       <div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>
       <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
@@ -162,6 +162,9 @@
     if (widget.type === 'integration-summary') {
       const i = (state.boot.integrations || []).find(x => x.id === widget.config?.integration_id); return i?.name || 'Service';
     }
+    if (widget.type === 'homeassistant-entities') {
+      const i = (state.boot.integrations || []).find(x => x.id === widget.config?.integration_id); return widget.title || i?.name || 'Home Assistant';
+    }
     return 'Widget';
   }
 
@@ -173,14 +176,14 @@
 
   async function loadWidgetData() {
     for (const widget of state.boot.widgets || []) {
-      if (widget.type === 'integration-summary') {
+      if (['integration-summary','homeassistant-entities'].includes(widget.type)) {
         // Paint the last server-side snapshot first, then refresh silently in the background.
         loadCachedWidget(widget).finally(() => loadOneWidget(widget, true));
       } else {
         loadOneWidget(widget);
       }
-      if (['integration-summary','rss','ipmanager-summary'].includes(widget.type)) {
-        const interval = widget.type === 'rss' ? 300000 : (widget.type === 'integration-summary' ? integrationRefreshMs(widget) : 60000);
+      if (['integration-summary','homeassistant-entities','rss','ipmanager-summary'].includes(widget.type)) {
+        const interval = widget.type === 'rss' ? 300000 : (['integration-summary','homeassistant-entities'].includes(widget.type) ? integrationRefreshMs(widget) : 60000);
         const timer = setInterval(() => loadOneWidget(widget, true), interval);
         state.widgetRefreshTimers.set(widget.id, timer);
       }
@@ -245,6 +248,11 @@
       body.innerHTML = `<div class="rss-list">${items.length ? items.map(i => `<a class="rss-item" href="${attr(i.link || '#')}" ${i.link ? 'target="_blank" rel="noopener"' : ''}><div><div class="rss-title">${esc(i.title)}</div>${i.description ? `<div class="rss-desc">${esc(i.description)}</div>` : ''}</div><div class="rss-date">${esc(fmtDate(i.date))}</div></a>`).join('') : '<div class="widget-loading">Keine Meldungen.</div>'}</div>`;
       return;
     }
+    if (data.kind === 'homeassistant') {
+      body.innerHTML = homeAssistantWidgetHtml(widget, data);
+      bindHomeAssistantActions(body, widget, data);
+      return;
+    }
     if (data.kind === 'integration') {
       if (data.history) hydrateMetricHistory(data.integration || {}, data.history);
       else updateMetricHistory(data.integration || {}, data.summary || {});
@@ -253,6 +261,69 @@
       return;
     }
     body.innerHTML = `<pre style="font-size:10px;overflow:auto">${esc(JSON.stringify(data,null,2))}</pre>`;
+  }
+
+  function haIconSvg(entity){
+    const domain=entity?.domain||String(entity?.entity_id||'').split('.')[0];
+    const dc=String(entity?.device_class||'').toLowerCase();
+    const common='viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    if(dc==='battery')return `<svg ${common}><rect x="3" y="7" width="16" height="10" rx="2"/><path d="M21 10v4"/><path d="M6 10h7"/></svg>`;
+    if(['power','energy'].includes(dc))return `<svg ${common}><path d="M13 2 5 14h6l-1 8 9-13h-6z"/></svg>`;
+    if(dc==='temperature')return `<svg ${common}><path d="M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0Z"/><path d="M12 11v6"/></svg>`;
+    if(domain==='light')return `<svg ${common}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M8.4 14.5A6 6 0 1 1 15.6 14.5c-.9.8-1.6 1.6-1.8 2.5h-3.6c-.2-.9-.9-1.7-1.8-2.5Z"/></svg>`;
+    if(domain==='switch')return `<svg ${common}><path d="M12 2v10"/><path d="M7.1 5.1a8 8 0 1 0 9.8 0"/></svg>`;
+    if(domain==='cover')return `<svg ${common}><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8h16M4 13h16M4 18h16"/></svg>`;
+    return `<svg ${common}><path d="M4 18V9M9 18V5M14 18v-7M19 18V3"/></svg>`;
+  }
+
+  function haStateLabel(entity){
+    const domain=entity?.domain||'';const state=String(entity?.state??'unknown');
+    if(domain==='switch'||domain==='light'){if(state==='on'){if(domain==='light'&&Number.isFinite(Number(entity?.brightness)))return `An · ${Math.round(Number(entity.brightness)/255*100)}%`;return 'An';}if(state==='off')return 'Aus';}
+    if(domain==='cover'){
+      const pos=Number(entity?.current_position);const suffix=Number.isFinite(pos)?` · ${Math.round(pos)}%`:'';
+      const names={open:'Offen',closed:'Geschlossen',opening:'Öffnet',closing:'Schließt'};return `${names[state]||state}${suffix}`;
+    }
+    return `${state}${entity?.unit?` ${entity.unit}`:''}`;
+  }
+
+  function homeAssistantWidgetHtml(widget,data){
+    const entities=data.entities||[];const display=data.display||widget.config?.display||'tiles';const icons=data.show_icons!==false;const controls=data.show_controls!==false;
+    if(!entities.length)return '<div class="widget-loading">Keine Entitäten ausgewählt.</div>';
+    return `<div class="ha-entity-grid ha-display-${attr(display)}">${entities.map(e=>{
+      const unavailable=['unavailable','unknown'].includes(String(e.state));const numeric=Number(e.state);const percent=e.unit==='%'&&Number.isFinite(numeric);
+      const domain=e.domain||String(e.entity_id||'').split('.')[0];
+      let action='';
+      if(controls&&(domain==='switch'||domain==='light'))action=`<button class="ha-toggle ${e.state==='on'?'on':''}" data-ha-action="toggle" data-ha-entity="${attr(e.entity_id)}" title="${e.state==='on'?'Ausschalten':'Einschalten'}" aria-label="Schalten"><span></span></button>`;
+      if(controls&&domain==='cover')action=`<div class="ha-cover-actions"><button data-ha-action="open" data-ha-entity="${attr(e.entity_id)}" title="Öffnen">↑</button><button data-ha-action="stop" data-ha-entity="${attr(e.entity_id)}" title="Stop">■</button><button data-ha-action="close" data-ha-entity="${attr(e.entity_id)}" title="Schließen">↓</button></div>`;
+      return `<div class="ha-entity ${unavailable?'unavailable':''} ha-domain-${attr(domain)}">${icons?`<div class="ha-entity-icon">${haIconSvg(e)}</div>`:''}<div class="ha-entity-copy"><div class="ha-entity-name" title="${attr(e.entity_id)}">${esc(e.name||e.entity_id)}</div><div class="ha-entity-state">${esc(haStateLabel(e))}</div>${percent?`<div class="ha-percent"><span style="width:${Math.max(0,Math.min(100,numeric))}%"></span></div>`:''}</div>${action}</div>`;
+    }).join('')}</div>`;
+  }
+
+  function bindHomeAssistantActions(body,widget,data){
+    $$('[data-ha-action]',body).forEach(btn=>btn.onclick=async e=>{
+      e.preventDefault();e.stopPropagation();const integrationId=widget.config?.integration_id;if(!integrationId)return;
+      const payload={id:integrationId,entity_id:btn.dataset.haEntity,action:btn.dataset.haAction};
+      btn.disabled=true;
+      try{await api('homeassistant/action',{body:payload});await new Promise(r=>setTimeout(r,180));await loadOneWidget(widget,true);}catch(err){btn.disabled=false;toast(err.message,'error')}
+    });
+  }
+
+  async function openHomeAssistantWidgetModal(integrationId,existingWidget=null){
+    const integration=(state.boot.integrations||[]).find(i=>i.id===integrationId&&i.type==='homeassistant');
+    if(!integration){toast('Home Assistant Integration nicht gefunden.','error');return;}
+    showModal(existingWidget?'Home Assistant Widget bearbeiten':'Home Assistant Widget','Lade verfügbare Entitäten…','');
+    let entities=[];
+    try{const d=await api('homeassistant/entities',{body:{id:integrationId}});entities=d.entities||[];}catch(e){closeModal();toast(e.message,'error');return;}
+    const selected=new Set((existingWidget?.config?.entity_ids||[]).map(String));
+    const display=existingWidget?.config?.display||'tiles';const showIcons=existingWidget?.config?.show_icons!==false;const showControls=existingWidget?.config?.show_controls!==false;
+    const entityRows=entities.map(e=>`<label class="ha-picker-row" data-ha-search="${attr(`${e.name} ${e.entity_id} ${e.domain}`.toLowerCase())}"><input type="checkbox" data-ha-pick="${attr(e.entity_id)}" ${selected.has(e.entity_id)?'checked':''}><span class="ha-picker-icon">${haIconSvg(e)}</span><span class="ha-picker-copy"><strong>${esc(e.name)}</strong><small>${esc(e.entity_id)} · ${esc(haStateLabel(e))}</small></span><span class="ha-picker-domain">${esc(e.domain)}</span></label>`).join('');
+    showModal(existingWidget?'Home Assistant Widget bearbeiten':'Home Assistant Widget','Bis zu 8 Sensoren, Schalter, Lichter oder Cover auswählen.',`<div class="field-row"><label>Titel (optional)</label><input id="haWidgetTitle" value="${attr(existingWidget?.title||'') }" placeholder="PV & Energie"></div><div class="form-grid"><div class="field-row"><label>Darstellung</label><select id="haWidgetDisplay"><option value="tiles" ${display==='tiles'?'selected':''}>Kacheln</option><option value="compact" ${display==='compact'?'selected':''}>Kompakt</option></select></div><div class="field-row"><label>Entitäten suchen</label><input id="haEntitySearch" placeholder="Batterie, PV, light…"></div></div><div class="ha-picker-options"><label><input id="haShowIcons" type="checkbox" ${showIcons?'checked':''}> Icons anzeigen</label><label><input id="haShowControls" type="checkbox" ${showControls?'checked':''}> Steuerung anzeigen</label><span id="haSelectedCount">${selected.size}/8 ausgewählt</span></div><div class="ha-picker-list">${entityRows||'<div class="widget-loading">Keine unterstützten Entitäten gefunden.</div>'}</div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveHaWidget">${existingWidget?'Speichern':'Hinzufügen'}</button>`,modal=>{
+      const search=$('#haEntitySearch',modal),count=$('#haSelectedCount',modal);const checks=$$('[data-ha-pick]',modal);
+      const updateCount=()=>{const n=checks.filter(c=>c.checked).length;count.textContent=`${n}/8 ausgewählt`;checks.forEach(c=>c.disabled=!c.checked&&n>=8)};
+      checks.forEach(c=>c.onchange=updateCount);updateCount();
+      search.oninput=()=>{const q=search.value.trim().toLowerCase();$$('[data-ha-search]',modal).forEach(row=>row.hidden=!!q&&!row.dataset.haSearch.includes(q))};
+      $('#saveHaWidget',modal).onclick=async()=>{const ids=checks.filter(c=>c.checked).map(c=>c.dataset.haPick).slice(0,8);if(!ids.length){toast('Wähle mindestens eine Entität.','error');return;}const config={integration_id:integrationId,entity_ids:ids,display:$('#haWidgetDisplay',modal).value,show_icons:$('#haShowIcons',modal).checked,show_controls:$('#haShowControls',modal).checked};const title=$('#haWidgetTitle',modal).value.trim();try{if(existingWidget){const d=await api('widgets/update',{body:{id:existingWidget.id,title,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Home Assistant Widget gespeichert.');}else{closeModal();const w=ids.length===1?2:(ids.length<=4?4:5),h=ids.length<=2?1:(ids.length<=4?2:3);await createWidget({type:'homeassistant-entities',title,config,w,h});}}catch(e){toast(e.message,'error')}};
+    });
   }
 
   function integrationOption(integration,key,def=true){const cfg=integration?.config||{};return Object.prototype.hasOwnProperty.call(cfg,key)?Boolean(cfg[key]):def;}
@@ -367,9 +438,14 @@
   async function saveLayout(){try{const d=await api('widgets/layout',{body:{widgets:(state.boot.widgets||[]).map(({id,x,y,w,h})=>({id,x,y,w,h}))}});state.boot.widgets=d.widgets;}catch(e){toast(e.message,'error')}}
 
   function openWidgetSettings(widget){
-    if(widget.type!=='app')return;
-    const current=widget.config?.layout||'auto';
-    showModal('App-Widget Darstellung','Die Darstellung gilt nur für dieses Dashboard-Widget.',`<div class="field-row"><label>Layout</label><select id="appWidgetLayout"><option value="auto" ${current==='auto'?'selected':''}>Automatisch nach Größe</option><option value="vertical" ${current==='vertical'?'selected':''}>Icon oben · Text darunter</option><option value="horizontal" ${current==='horizontal'?'selected':''}>Icon links · Text daneben</option><option value="icon" ${current==='icon'?'selected':''}>Nur Icon</option></select></div><div class="widget-layout-preview"><span>1×1 wird bei Bedarf automatisch sehr kompakt dargestellt.</span></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetSettings">Speichern</button>`,modal=>{$('#saveWidgetSettings',modal).onclick=async()=>{const config={...(widget.config||{}),layout:$('#appWidgetLayout',modal).value};try{const d=await api('widgets/update',{body:{id:widget.id,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Darstellung gespeichert.');}catch(e){toast(e.message,'error')}}});
+    if(widget.type==='app'){
+      const current=widget.config?.layout||'auto';
+      showModal('App-Widget Darstellung','Die Darstellung gilt nur für dieses Dashboard-Widget.',`<div class="field-row"><label>Layout</label><select id="appWidgetLayout"><option value="auto" ${current==='auto'?'selected':''}>Automatisch nach Größe</option><option value="vertical" ${current==='vertical'?'selected':''}>Icon oben · Text darunter</option><option value="horizontal" ${current==='horizontal'?'selected':''}>Icon links · Text daneben</option><option value="icon" ${current==='icon'?'selected':''}>Nur Icon</option></select></div><div class="widget-layout-preview"><span>1×1 wird bei Bedarf automatisch sehr kompakt dargestellt.</span></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetSettings">Speichern</button>`,modal=>{$('#saveWidgetSettings',modal).onclick=async()=>{const config={...(widget.config||{}),layout:$('#appWidgetLayout',modal).value};try{const d=await api('widgets/update',{body:{id:widget.id,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Darstellung gespeichert.');}catch(e){toast(e.message,'error')}}});
+      return;
+    }
+    if(widget.type==='homeassistant-entities'){
+      openHomeAssistantWidgetModal(widget.config?.integration_id, widget);
+    }
   }
 
   function openWidgetPicker() {
@@ -381,7 +457,7 @@
       {key:'note',name:'Note',desc:'Kurze Notiz direkt auf dem Dashboard.',icon:'N'},
       installedTypes.has('rss') ? {key:'rss',name:'RSS / Atom',desc:'News und Feeds anzeigen.',icon:'R'} : null,
       installedTypes.has('ipmanager-summary') ? {key:'ipmanager-summary',name:'IP Manager',desc:'Netze und dokumentierte Geräte.',icon:'IP'} : null,
-      ...integrations.filter(i=>i.enabled).map(i=>({key:'integration:'+i.id,name:i.name,desc:`${i.type} Status`,icon:initials(i.name)})),
+      ...integrations.filter(i=>i.enabled).map(i=>({key:'integration:'+i.id,name:i.name,desc:i.type==='homeassistant'?'Sensoren, Schalter, Lichter und Cover auswählen.':`${i.type} Status`,icon:initials(i.name)})),
     ].filter(Boolean);
     showModal('Widget hinzufügen','Wähle, was auf dem Dashboard erscheinen soll.', `<div class="widget-picker">${cards.map(c=>`<button class="widget-choice" type="button" data-widget-choice="${attr(c.key)}"><strong>${esc(c.name)}</strong><span>${esc(c.desc)}</span></button>`).join('') || '<p>Installiere zuerst Pakete im PenguHub oder lege Apps an.</p>'}</div>`, '', modal => {
       $$('[data-widget-choice]',modal).forEach(btn=>btn.addEventListener('click',()=>configureWidgetChoice(btn.dataset.widgetChoice)));
@@ -392,7 +468,7 @@
     closeModal();
     if (key === 'clock' || key === 'ipmanager-summary') { createWidget({type:key,w:key==='clock'?3:4,h:2}); return; }
     if (key.startsWith('integration:')) {
-      const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0],h:size[1]});return;
+      const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(integration?.type==='homeassistant'){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0],h:size[1]});return;
     }
     if (key === 'app') {
       const opts=(state.boot.apps||[]).map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('');
@@ -431,7 +507,7 @@
     $$('[data-app-category]').forEach(b=>b.onclick=()=>{state.appCategory=b.dataset.appCategory;renderApps()});
     $$('[data-app-view]').forEach(b=>b.onclick=()=>{state.appView=b.dataset.appView;localStorage.setItem('pengulab-app-view',state.appView);renderApps()});
     $$('[data-edit-app]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();openAppModal(all.find(a=>a.id===b.dataset.editApp))});
-    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget,layout:'vertical'},w:2,h:2})});
+    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget,layout:'vertical'},w:1,h:1})});
   }
 
   function openAppModal(app=null) {
@@ -461,7 +537,7 @@
     $('#addIntegration')?.addEventListener('click',()=>openIntegrationTypePicker());
     $$('[data-test-integration]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Teste…';try{const d=await api('integrations/test',{body:{id:b.dataset.testIntegration}});state.boot.integrations=d.integrations;renderIntegrations();toast('Verbindung erfolgreich.');}catch(e){b.disabled=false;b.textContent='Testen';toast(e.message,'error')}});
     $$('[data-edit-integration]').forEach(b=>b.onclick=()=>openIntegrationModal(integrations.find(i=>i.id===b.dataset.editIntegration)));
-    $$('[data-widget-integration]').forEach(b=>{b.onclick=()=>{const i=integrations.find(x=>x.id===b.dataset.widgetIntegration);const cat=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===i?.type);const sz=cat?.defaultSize||[4,2];createWidget({type:'integration-summary',title:i?.name||'',config:{integration_id:i.id},w:sz[0],h:sz[1]});}});
+    $$('[data-widget-integration]').forEach(b=>{b.onclick=()=>{const i=integrations.find(x=>x.id===b.dataset.widgetIntegration);if(!i)return;if(i.type==='homeassistant'){openHomeAssistantWidgetModal(i.id);return;}const cat=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===i?.type);const sz=cat?.defaultSize||[4,2];createWidget({type:'integration-summary',title:i?.name||'',config:{integration_id:i.id},w:sz[0],h:sz[1]});}});
   }
 
   function openIntegrationTypePicker(){const types=state.boot.integrationTypes||[];showModal('Verbindung hinzufügen','Installierte PenguHub-Connectoren.',`<div class="widget-picker">${types.map(t=>`<button class="widget-choice" data-integration-type="${attr(t.type)}"><strong>${esc(t.name)}</strong><span>${esc(t.description||'')}</span></button>`).join('')}</div>`,'',modal=>{$$('[data-integration-type]',modal).forEach(b=>b.onclick=()=>{closeModal();openIntegrationModal(null,b.dataset.integrationType)})});}

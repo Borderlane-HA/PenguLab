@@ -156,6 +156,39 @@ try {
             $result = $integrations->test($id);
             json_response(['ok' => true, 'data' => $result, 'integrations' => $integrations->list()]);
 
+        case 'homeassistant/entities':
+            require_method('POST');
+            require_admin($auth);
+            $input = json_body();
+            $id = trim((string)($input['id'] ?? ''));
+            $integration = $integrations->full($id);
+            if (!$integration || (string)($integration['type'] ?? '') !== 'homeassistant') {
+                throw new RuntimeException('Home Assistant integration not found.');
+            }
+            $result = $integrations->execute($id, 'entities');
+            json_response(['ok'=>true,'entities'=>$result['entities'] ?? []]);
+
+        case 'homeassistant/action':
+            require_method('POST');
+            $input = json_body();
+            $id = trim((string)($input['id'] ?? ''));
+            if (!$auth->canIntegration($id)) json_response(['ok'=>false,'error'=>'No permission for this integration.'],403);
+            $integration = $integrations->full($id);
+            if (!$integration || (string)($integration['type'] ?? '') !== 'homeassistant') {
+                throw new RuntimeException('Home Assistant integration not found.');
+            }
+            $payload = [
+                'entity_id' => trim((string)($input['entity_id'] ?? '')),
+                'action' => trim((string)($input['action'] ?? '')),
+            ];
+            if (!homeassistant_entity_is_exposed($db, $id, $payload['entity_id'])) {
+                json_response(['ok'=>false,'error'=>'This Home Assistant entity is not exposed by a dashboard widget.'],403);
+            }
+            if (array_key_exists('position', $input)) $payload['position'] = (int)$input['position'];
+            $mode = 'action:' . base64_encode(json_encode($payload, JSON_UNESCAPED_SLASHES));
+            $result = $integrations->execute($id, $mode);
+            json_response(['ok'=>true,'data'=>$result]);
+
         case 'integrations/action':
             require_method('POST');
             $input = json_body();
@@ -272,7 +305,7 @@ function visible_widgets(array $ctx): array
     if($auth->isAdmin()) return $widgets;
     return array_values(array_filter($widgets,function($w)use($auth){
         if(($w['type']??'')==='ipmanager-summary') return $auth->canIpManager();
-        if(($w['type']??'')==='integration-summary') return $auth->canIntegration((string)($w['config']['integration_id']??''));
+        if(in_array(($w['type']??''),['integration-summary','homeassistant-entities'],true)) return $auth->canIntegration((string)($w['config']['integration_id']??''));
         return true;
     }));
 }
@@ -281,7 +314,7 @@ function require_widget_access(Database $db, $auth, string $id): void
 {
     foreach($db->widgets() as $w){if($w['id']!==$id)continue;
         if(($w['type']??'')==='ipmanager-summary'&&!$auth->canIpManager())json_response(['ok'=>false,'error'=>'No permission for IP Manager.'],403);
-        if(($w['type']??'')==='integration-summary'&&!$auth->canIntegration((string)($w['config']['integration_id']??'')))json_response(['ok'=>false,'error'=>'No permission for this integration.'],403);
+        if(in_array(($w['type']??''),['integration-summary','homeassistant-entities'],true)&&!$auth->canIntegration((string)($w['config']['integration_id']??'')))json_response(['ok'=>false,'error'=>'No permission for this integration.'],403);
         return;
     }
 }
@@ -311,6 +344,19 @@ function bootstrap_payload(array $ctx): array
         'integrationTypes' => $ctx['auth']->isAdmin() ? $ctx['addons']->integrationTypes() : [],
         'integrations' => visible_integrations($ctx),
     ];
+}
+
+function homeassistant_entity_is_exposed(Database $db, string $integrationId, string $entityId): bool
+{
+    if ($integrationId === '' || $entityId === '') return false;
+    foreach ($db->widgets() as $widget) {
+        if (($widget['type'] ?? '') !== 'homeassistant-entities') continue;
+        $config = is_array($widget['config'] ?? null) ? $widget['config'] : [];
+        if ((string)($config['integration_id'] ?? '') !== $integrationId) continue;
+        $ids = is_array($config['entity_ids'] ?? null) ? array_map('strval', $config['entity_ids']) : [];
+        if (in_array($entityId, $ids, true)) return true;
+    }
+    return false;
 }
 
 function clean_url(string $url): string
@@ -434,6 +480,7 @@ function update_widget(Database $db, array $input): void
     $config = is_array($input['config'] ?? null) ? $input['config'] : $existing['config'];
     $stmt = $db->pdo()->prepare('UPDATE widgets SET title=:title, config_json=:config, updated_at=:updated WHERE id=:id');
     $stmt->execute(['title'=>$title,'config'=>json_encode($config, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>gmdate(DATE_ATOM),'id'=>$id]);
+    $db->pdo()->prepare('DELETE FROM widget_data_cache WHERE widget_id=:id')->execute(['id'=>$id]);
 }
 
 function save_layout(Database $db, mixed $items): void
@@ -534,6 +581,26 @@ function persist_integration_widget_data(Database $db, array $integration, array
     return integration_metric_history($db,$integrationId,$type);
 }
 
+function widget_cache_read(Database $db, string $widgetId): array
+{
+    $stmt=$db->pdo()->prepare('SELECT data_json,fetched_at FROM widget_data_cache WHERE widget_id=:id');
+    $stmt->execute(['id'=>$widgetId]);
+    $row=$stmt->fetch();
+    if(!is_array($row)) return ['cached'=>false,'fetched_at'=>0,'cache_age'=>null];
+    $data=json_decode((string)$row['data_json'],true);
+    if(!is_array($data)) $data=[];
+    $fetched=(int)$row['fetched_at'];
+    return $data + ['cached'=>true,'fetched_at'=>$fetched,'cache_age'=>$fetched>0?max(0,time()-$fetched):null];
+}
+
+function widget_cache_write(Database $db, string $widgetId, array $data): array
+{
+    $now=time();
+    $stmt=$db->pdo()->prepare('INSERT INTO widget_data_cache(widget_id,data_json,fetched_at) VALUES(:id,:data,:fetched) ON CONFLICT(widget_id) DO UPDATE SET data_json=excluded.data_json,fetched_at=excluded.fetched_at');
+    $stmt->execute(['id'=>$widgetId,'data'=>json_encode($data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'fetched'=>$now]);
+    return $data + ['cached'=>false,'fetched_at'=>$now,'cache_age'=>0];
+}
+
 function widget_data(Database $db, $addons, $integrations, string $id, bool $cachedOnly=false): array
 {
     $widget = null;
@@ -559,6 +626,25 @@ function widget_data(Database $db, $addons, $integrations, string $id, bool $cac
             $summary=$integrations->execute($integrationId,'summary');
             $history=persist_integration_widget_data($db,$integration,$summary);
             return ['kind'=>'integration','integration'=>$integration,'summary'=>$summary,'history'=>$history,'cached'=>false,'fetched_at'=>time(),'cache_age'=>0];
+        case 'homeassistant-entities':
+            $integrationId = trim((string)($config['integration_id'] ?? ''));
+            if ($integrationId === '') throw new RuntimeException('No Home Assistant integration selected.');
+            $integration = $integrations->full($integrationId);
+            if (!$integration || (string)($integration['type'] ?? '') !== 'homeassistant') throw new RuntimeException('Home Assistant integration not found.');
+            if ($cachedOnly) return widget_cache_read($db, $id);
+            $entityIds = is_array($config['entity_ids'] ?? null) ? array_values(array_slice(array_unique(array_filter(array_map('strval',$config['entity_ids']))),0,8)) : [];
+            if ($entityIds === []) throw new RuntimeException('No Home Assistant entities selected.');
+            $mode='states:' . base64_encode(json_encode($entityIds,JSON_UNESCAPED_SLASHES));
+            $result=$integrations->execute($integrationId,$mode);
+            $payload=[
+                'kind'=>'homeassistant',
+                'integration'=>array_diff_key($integration,['secret_enc'=>true,'_secrets'=>true,'config_json'=>true]),
+                'entities'=>$result['entities'] ?? [],
+                'display'=>(string)($config['display'] ?? 'tiles'),
+                'show_icons'=>!array_key_exists('show_icons',$config) || (bool)$config['show_icons'],
+                'show_controls'=>!array_key_exists('show_controls',$config) || (bool)$config['show_controls'],
+            ];
+            return widget_cache_write($db,$id,$payload);
         case 'rss':
             if (!$addons->enabled('rss')) throw new RuntimeException('RSS package is not installed.');
             $url = clean_url((string)($config['feed_url'] ?? ''));

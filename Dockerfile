@@ -31,7 +31,7 @@ ENV PENGULAB_DATA_DIR=/app/data
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD php -r '$s=@file_get_contents("http://127.0.0.1:8080/api.php?route=bootstrap"); exit($s===false?1:0);'
+  CMD php -r '$s=@file_get_contents("http://127.0.0.1:8080/"); exit($s===false?1:0);'
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["php", "-S", "0.0.0.0:8080", "-t", "/app"]

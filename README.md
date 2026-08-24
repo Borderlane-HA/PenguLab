@@ -4,7 +4,7 @@
 
 Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a flexible dashboard, service integrations and installable PenguHub packages in one lightweight self-hosted interface.
 
-> **Status:** `2.0.0-alpha.7` — this branch is an architectural preview and migration build. Back up your existing `apps.json` before testing an upgrade.
+> **Stable release:** `2.0.0` — the first stable PenguLab Control Center release. Existing PenguLab 1.x data is migrated automatically, but a backup is still recommended before upgrading.
 
 ## What is new in 2.0
 
@@ -20,6 +20,8 @@ Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a 
 - OPNsense gateway/RAM/WireGuard metrics plus a sampled WAN traffic mini-graph
 - persistent server-side widget snapshots/history: cached values render immediately after reload or navigation, then refresh live
 - configurable integration refresh interval (5–60 seconds)
+- Home Assistant PenguHub integration for selected sensors, switches, lights and covers
+- Compact Home Assistant entity widgets with optional icons, controls and cached last-known values
 - Per-network discovery in IP Manager with Nmap + optional OPNsense ARP enrichment
 - Pi-hole and AdGuard Home protection controls directly from dashboard widgets
 - Separate **Apps**, **Integrations**, **PenguHub** and **Settings** areas
@@ -35,7 +37,7 @@ Instead of being only a start page, PenguLab 2.0 combines fast app shortcuts, a 
 
 ## PenguHub
 
-PenguHub is the extension layer of PenguLab. The alpha ships with a small curated local catalog:
+PenguHub is the extension layer of PenguLab. PenguLab 2.0 ships with a small curated local catalog:
 
 | Package | Type | Purpose |
 | --- | --- | --- |
@@ -43,10 +45,11 @@ PenguHub is the extension layer of PenguLab. The alpha ships with a small curate
 | **Pi-hole** | Integration + widget | Pi-hole v6 statistics + protection controls |
 | **AdGuard Home** | Integration + widget | DNS statistics + protection controls |
 | **OPNsense** | Integration + widget | Read-only firewall/system health |
+| **Home Assistant** | Integration + widget | Selected sensors, switches, lights and covers |
 | **RSS** | Widget | RSS/Atom news feeds on the dashboard |
 | **Generic API** | Integration + widget | Display simple values from an arbitrary JSON API |
 
-In this first alpha the packages are **bundled with PenguLab and activated from PenguHub**. A remote, signed package repository is deliberately not part of the first build. This keeps the trust and update model small while the add-on API stabilizes.
+In 2.0 the curated packages are **bundled with PenguLab and activated from PenguHub**. A remote, signed package repository is deliberately not part of the first build. This keeps the trust and update model small while the add-on API stabilizes.
 
 ## IP Manager 2.0
 
@@ -85,20 +88,45 @@ Integration traffic follows this path:
 Browser
   -> PenguLab API
       -> Integration connector
-          -> Pi-hole / AdGuard Home / OPNsense / custom API
+          -> Pi-hole / AdGuard Home / OPNsense / Home Assistant / custom API
 ```
 
 Secrets are encrypted in SQLite and are not included in normal JSON exports.
 
-Pi-hole and AdGuard Home widgets can optionally perform a small, explicit set of control actions: **resume protection**, **pause for 5 minutes**, and **pause indefinitely**. After every action PenguLab immediately reads the real protection state back from the DNS service, updates the persistent widget cache and only then updates the UI. This avoids a stale green "Schutz aktiv" state after pausing. These actions are proxied through PenguLab; credentials remain server-side. OPNsense stays read-only in the current alpha. Its widget can selectively show gateway health, RAM, WireGuard and a sampled traffic graph; these options are configured on the integration itself.
+Pi-hole and AdGuard Home widgets can optionally perform a small, explicit set of control actions: **resume protection**, **pause for 5 minutes**, and **pause indefinitely**. After every action PenguLab immediately reads the real protection state back from the DNS service, updates the persistent widget cache and only then updates the UI. This avoids a stale green "Schutz aktiv" state after pausing. These actions are proxied through PenguLab; credentials remain server-side. OPNsense stays read-only in 2.0.0. Its widget can selectively show gateway health, RAM, WireGuard and a sampled traffic graph; these options are configured on the integration itself.
 
 Integration widgets keep their latest successful snapshot and metric samples in SQLite. When returning to the dashboard, PenguLab renders the cached state immediately and refreshes it in the background; graphs therefore no longer restart from an empty browser-only history. The refresh cadence can be selected per integration (5/10/15/30/60 seconds).
 
 For OPNsense discovery/traffic features, keep the API account read-only and grant only the pages you need. In current OPNsense builds the ARP endpoints are covered by **Diagnostics: ARP Table** and interface statistics by **Diagnostics: Netstat**. Optional endpoints that the API account cannot access are skipped instead of breaking the whole widget.
 
+## Home Assistant
+
+The **Home Assistant** PenguHub package is intentionally small and does not try to replace a Home Assistant dashboard. It is meant for the handful of entities you want visible next to the rest of your Homelab — for example PV production, battery state of charge, a wallbox, lights or a garage cover.
+
+Supported entity domains in PenguLab 2.0:
+
+- `sensor` — read-only value, unit and optional percentage bar
+- `switch` — state plus toggle control
+- `light` — state plus toggle control
+- `cover` — state/current position plus open, stop and close controls
+
+Install **Home Assistant** in **PenguHub**, then add an integration with:
+
+```text
+URL: https://homeassistant.local:8123
+Long-Lived Access Token: <token from your Home Assistant profile>
+Verify TLS certificate: on by default
+```
+
+Home Assistant accepts API requests with an `Authorization: Bearer <token>` header. Create a **Long-Lived Access Token** from the bottom of your Home Assistant profile page and store it in PenguLab. The token stays encrypted server-side and is never sent to the browser.
+
+After saving the integration, use **Widget** and select up to eight entities. A widget can use a tile or compact layout, show/hide icons, and show/hide controls. The last successful entity snapshot is cached in SQLite, so returning to the dashboard paints the previous state immediately and refreshes it in the background.
+
+For an internal Home Assistant instance using a self-signed certificate, disable **Verify TLS certificate** only for that integration.
+
 ## Login and users
 
-PenguLab 2.0 alpha.7 adds local accounts. On a new installation the initial administrator is:
+PenguLab 2.0 includes local accounts. On a new installation the initial administrator is:
 
 ```text
 Username: admin
@@ -126,9 +154,9 @@ PenguLab uses separate Docker channels so test builds cannot replace the product
 | --- | --- | --- |
 | Stable GitHub release | `latest` | Production |
 | GitHub pre-release | `prerelease` | Alpha / beta / RC testing |
-| Every release | exact release tag, e.g. `2.0.0-alpha.7` | Pinning / reproducible tests |
+| Every release | exact release tag, e.g. `2.0.0` | Pinning / reproducible tests |
 
-A GitHub **pre-release never updates `latest`**. Publishing `2.0.0-alpha.7` as a pre-release therefore publishes both `:2.0.0-alpha.7` and `:prerelease`, while the last stable build remains on `:latest`.
+A GitHub **pre-release never updates `latest`**. Publishing a pre-release such as `2.1.0-beta.1` publishes both the exact tag and `:prerelease`, while publishing stable `2.0.0` publishes both `:2.0.0` and `:latest`.
 
 > **Note for `2.0.0-alpha.1`:** the first alpha workflow still tagged every published release as `latest`. If that workflow already ran, re-publish the last stable source (for example `1.0.3`) with the workflow's manual **stable** channel once. The corrected workflow in alpha.2 prevents this for future pre-releases.
 
@@ -167,11 +195,11 @@ Open:
 http://YOURDOCKERHOST:19961
 ```
 
-### Testing this alpha from the source tree
+### Building this release from the source tree
 
 ```bash
-docker build -t pengulab:2.0-alpha.7 .
-docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0-alpha.7
+docker build -t pengulab:2.0.0 .
+docker run --rm -p 19961:8080 -v ./data:/app/data pengulab:2.0.0
 ```
 
 ## Proxmox VE LXC
@@ -215,11 +243,11 @@ For alpha/beta testing, create a **second LXC** instead of changing the producti
 
 This leaves the stable LXC on `ghcr.io/borderlane-ha/pengulab:latest` and creates the test LXC from `:prerelease`. Use a different CTID/hostname and preferably temporary or copied data.
 
-To pin the test LXC to this exact pre-release instead:
+To pin an LXC to the stable 2.0.0 release instead:
 
 ```bash
 pct enter <TEST-CTID>
-pengulabctl version 2.0.0-alpha.7
+pengulabctl version 2.0.0
 pengulabctl update
 ```
 

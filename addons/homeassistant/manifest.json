@@ -1,0 +1,67 @@
+{
+  "id": "homeassistant",
+  "name": "Home Assistant",
+  "version": "1.0.0",
+  "category": "Smart Home",
+  "author": "Borderlane-HA",
+  "description": "Show and control selected Home Assistant sensors, switches, lights and covers without replacing the Home Assistant dashboard.",
+  "icon": "home",
+  "connector": "connector.php",
+  "permissions": [
+    "network.http",
+    "secrets.read",
+    "service.control"
+  ],
+  "integration": {
+    "type": "homeassistant",
+    "name": "Home Assistant",
+    "description": "Home Assistant REST API",
+    "fields": [
+      {
+        "key": "base_url",
+        "label": "Home Assistant URL",
+        "type": "url",
+        "placeholder": "https://homeassistant.local:8123",
+        "required": true
+      },
+      {
+        "key": "access_token",
+        "label": "Long-Lived Access Token",
+        "type": "password",
+        "secret": true,
+        "required": true
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "widget_options": [
+      {
+        "key": "refresh_interval",
+        "label": "Live-Aktualisierung",
+        "type": "select",
+        "default": "10",
+        "options": [
+          {"value": "5", "label": "alle 5 Sekunden"},
+          {"value": "10", "label": "alle 10 Sekunden"},
+          {"value": "15", "label": "alle 15 Sekunden"},
+          {"value": "30", "label": "alle 30 Sekunden"},
+          {"value": "60", "label": "alle 60 Sekunden"}
+        ]
+      }
+    ]
+  },
+  "widgets": [
+    {
+      "type": "homeassistant-entities",
+      "integrationType": "homeassistant",
+      "name": "Home Assistant Entities",
+      "description": "Selected sensors, switches, lights and covers in one compact widget.",
+      "icon": "home",
+      "defaultSize": [4, 2]
+    }
+  ]
+}

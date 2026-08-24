@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.0
+
+### Added
+- Added the Home Assistant PenguHub integration using Home Assistant's REST API and server-side Long-Lived Access Token storage.
+- Added configurable Home Assistant dashboard widgets for up to eight `sensor`, `switch`, `light` and `cover` entities.
+- Added compact/tile layouts, optional domain/device-class icons, sensor units and percentage bars.
+- Added switch/light toggle controls and cover open/stop/close controls through PenguLab's server-side API proxy.
+- Added persistent per-widget Home Assistant snapshots so the last known state renders immediately after navigation or reload.
+- Fixed the Docker healthcheck for authenticated PenguLab 2.0 installations by checking the login/start page instead of the protected bootstrap API.
+
+### Stable milestone
+- Promoted the PenguLab 2.0 architecture from alpha to stable after the dashboard, PenguHub, SQLite migration, app library, IP Manager, user management, DNS controls, OPNsense monitoring and Proxmox LXC workflow were exercised through the alpha series.
+- Stable Docker releases publish both the exact version tag and `latest`; future pre-releases remain isolated on `prerelease`.
+
 ## 2.0.0-alpha.7
 
 - Added local authentication and user management.

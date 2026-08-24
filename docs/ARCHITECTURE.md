@@ -53,6 +53,7 @@ Core tables:
 - `users`
 - `remember_tokens`
 - `integration_widget_cache` / `integration_metric_samples`
+- `widget_data_cache` for widget-specific last-known snapshots such as Home Assistant entity panels
 
 Add-ons own tables with a package-specific prefix. IP Manager, for example, owns `ipm_networks` and `ipm_devices`.
 
@@ -88,7 +89,7 @@ This prevents browser widgets from receiving API passwords or OPNsense API secre
 
 ## Package trust
 
-Alpha 1 uses a curated bundled catalog. An "install" operation enables a package already present in the image and runs its idempotent database migration.
+PenguLab 2.0 uses a curated bundled catalog. An "install" operation enables a package already present in the image and runs its idempotent database migration.
 
 A future remote PenguHub must add, at minimum:
 
