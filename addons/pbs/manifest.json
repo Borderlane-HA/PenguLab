@@ -1,0 +1,39 @@
+{
+  "id": "pbs",
+  "name": "Proxmox Backup Server",
+  "version": "1.0.0",
+  "category": "Backup & Infrastructure",
+  "author": "Borderlane-HA",
+  "description": "Show a Proxmox Backup Server task summary with backups, prunes, garbage collection, sync, verify and tape jobs.",
+  "icon": "backup",
+  "connector": "connector.php",
+  "permissions": ["network.http", "secrets.read"],
+  "integration": {
+    "type": "pbs",
+    "name": "Proxmox Backup Server",
+    "description": "PBS task summary via the management REST API",
+    "fields": [
+      {"key":"base_url","label":"PBS URL","type":"url","placeholder":"https://pbs.local:8007","required":true},
+      {"key":"username","label":"API Token ID","type":"text","placeholder":"pengulab@pbs!monitoring","required":true},
+      {"key":"token_secret","label":"API Token Secret","type":"password","secret":true,"required":true},
+      {"key":"verify_tls","label":"Verify TLS certificate","type":"boolean","default":true}
+    ],
+    "widget_options": [
+      {"key":"refresh_interval","label":"Aktualisierung","type":"select","default":"60","options":[
+        {"value":"30","label":"alle 30 Sekunden"},{"value":"60","label":"jede Minute"},{"value":"300","label":"alle 5 Minuten"}
+      ]},
+      {"key":"summary_days","label":"Task-Zeitraum","type":"select","default":"30","options":[
+        {"value":"7","label":"7 Tage"},{"value":"30","label":"30 Tage"},{"value":"90","label":"90 Tage"}
+      ]},
+      {"key":"show_backup","label":"Backups anzeigen","type":"boolean","default":true},
+      {"key":"show_prune","label":"Prunes anzeigen","type":"boolean","default":true},
+      {"key":"show_gc","label":"Garbage Collections anzeigen","type":"boolean","default":true},
+      {"key":"show_sync","label":"Syncs anzeigen","type":"boolean","default":true},
+      {"key":"show_verify","label":"Verify anzeigen","type":"boolean","default":true},
+      {"key":"show_tape","label":"Tape Backup / Restore anzeigen","type":"boolean","default":true}
+    ]
+  },
+  "widgets": [
+    {"type":"integration-summary","integrationType":"pbs","name":"Proxmox Backup Server","description":"Task Summary for recent PBS jobs.","icon":"backup","defaultSize":[5,3]}
+  ]
+}

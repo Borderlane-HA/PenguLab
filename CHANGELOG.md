@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.0
+
+- Added admin-only PenguHub ZIP uploads for custom integration/add-on packages. Uploaded packages are validated and stored under `/data/addons` so they survive container updates.
+- Added package update/delete controls for uploaded PenguHub packages and a generic metrics/rows renderer for simple third-party connectors.
+- Added Proxmox Backup Server integration with API-token authentication and a selectable 7/30/90-day Task Summary.
+- PBS Task Summary groups backups, prunes, garbage collection, syncs, verify jobs and tape backup/restore tasks into error, warning and OK counts.
+- Added ZIP support and upload-size configuration to the Docker image.
+
 ## 2.3.0
 
 - Added the new PenguLab penguin logo to the real application, login page and browser favicon.

@@ -37,7 +37,7 @@ if (!isset($_SESSION['pengulab_csrf'])) {
 $dataDir = getenv('PENGULAB_DATA_DIR') ?: (__DIR__ . '/data');
 $db = new Database($dataDir, __DIR__);
 $secrets = new Secrets($dataDir);
-$addons = new AddonManager($db, __DIR__ . '/addons');
+$addons = new AddonManager($db, __DIR__ . '/addons', $dataDir . '/addons');
 $integrations = new IntegrationManager($db, $addons, $secrets);
 $auth = new Auth($db);
 $version = trim((string)@file_get_contents(__DIR__ . '/VERSION')) ?: 'dev';

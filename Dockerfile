@@ -5,6 +5,7 @@ WORKDIR /app
 RUN apk add --no-cache \
       curl-dev \
       libxml2-dev \
+      libzip-dev \
       libsodium-dev \
       oniguruma-dev \
       sqlite-dev \
@@ -14,10 +15,13 @@ RUN apk add --no-cache \
       curl \
       mbstring \
       pdo_sqlite \
+      zip \
       simplexml \
       sodium
 
 COPY . /app
+
+RUN printf "upload_max_filesize=8M\npost_max_size=10M\nmax_file_uploads=5\n" > /usr/local/etc/php/conf.d/pengulab-uploads.ini
 
 RUN addgroup -S pengulab \
     && adduser -S -G pengulab pengulab \

@@ -109,6 +109,37 @@ try {
             $cachedOnly = !empty($_GET['cached']);
             json_response(['ok' => true, 'data' => widget_data($db, $addons, $integrations, $id, $cachedOnly)]);
 
+        case 'addons/upload':
+            require_method('POST');
+            require_admin($auth);
+            $file = $_FILES['package'] ?? null;
+            if (!is_array($file) || (int)($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                throw new RuntimeException('No valid PenguHub ZIP package was uploaded.');
+            }
+            $originalName = (string)($file['name'] ?? 'package.zip');
+            if (strtolower(pathinfo($originalName, PATHINFO_EXTENSION)) !== 'zip') {
+                throw new RuntimeException('PenguHub packages must be uploaded as ZIP files.');
+            }
+            $tmpName = (string)($file['tmp_name'] ?? '');
+            if ($tmpName === '' || !is_file($tmpName)) throw new RuntimeException('Uploaded package could not be read.');
+            $manifest = $addons->uploadPackage($tmpName, $originalName);
+            if (is_array($manifest['integration'] ?? null)) {
+                $type = (string)($manifest['integration']['type'] ?? '');
+                if ($type !== '') $db->pdo()->prepare('UPDATE integrations SET enabled=1 WHERE type=:type')->execute(['type'=>$type]);
+            }
+            json_response(['ok'=>true,'package'=>$manifest] + bootstrap_payload($ctx));
+
+        case 'addons/delete-uploaded':
+            require_method('POST');
+            require_admin($auth);
+            $id = trim((string)(json_body()['id'] ?? ''));
+            $manifest = $addons->manifest($id);
+            if (!$manifest) throw new RuntimeException('PenguHub package not found.');
+            $type = is_array($manifest['integration'] ?? null) ? (string)($manifest['integration']['type'] ?? '') : '';
+            $addons->deleteUploadedPackage($id);
+            if ($type !== '') $db->pdo()->prepare('UPDATE integrations SET enabled=0 WHERE type=:type')->execute(['type'=>$type]);
+            json_response(['ok'=>true] + bootstrap_payload($ctx));
+
         case 'addons/install':
             require_method('POST');
             require_admin($auth);

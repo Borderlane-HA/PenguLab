@@ -14,7 +14,7 @@ It is built for people who want a fast overview, useful widgets and a setup that
 
 - **Unified overview** – keep your most important apps, widgets and services in one place.
 - **Real-time monitoring** – view live values, status information and small charts at a glance.
-- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE and Zabbix through PenguHub, including live gateway/WireGuard and monitoring details.
+- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE, Proxmox Backup Server and Zabbix through PenguHub.
 - **Useful controls** – pause DNS protection or control selected Home Assistant entities right from the dashboard.
 - **Flexible layout** – move, resize and arrange widgets the way you like, from tiny Home Assistant controls to larger monitoring panels.
 - **Private by design** – your data stays on your own server.
@@ -36,10 +36,19 @@ Available integrations and add-ons include:
 - OPNsense
 - Home Assistant
 - Proxmox VE
+- Proxmox Backup Server
 - Zabbix
 - RSS / Atom feeds
 - IP Manager
 - Generic JSON API widgets
+
+Admins can also upload additional PenguHub integration packages as **ZIP files** directly in the web interface. Uploaded packages are stored in `/data/addons`, so they survive normal container updates. Only install packages from sources you trust, because an integration package may contain server-side code.
+
+## Proxmox Backup Server
+
+The PBS integration uses a read-only API token and can show the familiar **Task Summary** for a selectable time window (7, 30 or 90 days): backups, prunes, garbage collection, syncs, verify jobs and tape backup/restore tasks with OK, warning and error counts.
+
+For API-token authentication, use the PBS token ID (`user@realm!tokenname`) and token secret. A monitoring token needs appropriate read/audit permissions for the tasks it should see.
 
 ## Install with Docker
 

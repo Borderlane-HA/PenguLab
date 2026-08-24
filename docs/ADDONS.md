@@ -85,3 +85,32 @@ The future remote PenguHub should make permissions enforceable before third-part
 ## PenguLab 2.2 bundled integrations
 
 PenguHub also ships read-only **Proxmox VE** monitoring and **Zabbix** monitoring connectors. Both keep API credentials server-side and reuse the normal integration/widget permission model.
+
+## Uploadable PenguHub packages (2.4+)
+
+Administrators can upload a ZIP package directly in **PenguHub → Integration hochladen**. The package is extracted below `/data/addons/<id>/` and therefore survives normal Docker image updates.
+
+Accepted packages contain either `manifest.json` at the ZIP root, or one top-level folder containing `manifest.json`. Uploaded packages cannot replace a package bundled with PenguLab.
+
+For safety, PenguLab rejects absolute paths, `..` traversal, hidden files, unsupported file types, oversized files and oversized archives. Uploading remains an administrative trust boundary: a connector can contain PHP code and therefore must only be installed from a trusted source.
+
+An uploaded connector can use the normal `integration-summary` widget without frontend code. For a clean generic widget, return a `metrics` object (or array) and optionally `rows`:
+
+```json
+{
+  "status": "Online",
+  "metrics": {
+    "Hosts": "12",
+    "Problems": "0"
+  },
+  "rows": [
+    {"label": "Last backup", "value": "OK", "meta": "2 min ago"}
+  ]
+}
+```
+
+Package-specific UI can still be added to PenguLab itself when a more specialized presentation is useful.
+
+## Proxmox Backup Server package
+
+The bundled `pbs` package reads the PBS management REST API and summarizes recent task states. By default it queries the last 30 days through `/api2/json/nodes/localhost/tasks` and groups backup, prune, garbage collection, sync, verify and tape tasks into error, warning and OK counters.
