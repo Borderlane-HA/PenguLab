@@ -197,8 +197,10 @@
     const typeClass = `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
     const sizeClass = widget.type === 'app' ? (widget.w <= 1 ? 'app-widget-xs' : widget.w === 2 ? 'app-widget-sm' : 'app-widget-lg') : '';
     const settingsButton = isAdmin() && ['app','homeassistant-entities'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
-    return `<section class="widget ${typeClass} ${sizeClass}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2}">
-      <div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>
+    const hideHead = widget.type === 'homeassistant-entities' && !String(widget.title || '').trim() && !state.editMode;
+    const head = hideHead ? '' : `<div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>`;
+    return `<section class="widget ${typeClass} ${sizeClass} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2}">
+      ${head}
       <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
     </section>`;
   }
@@ -215,7 +217,7 @@
       const i = (state.boot.integrations || []).find(x => x.id === widget.config?.integration_id); return i?.name || 'Service';
     }
     if (widget.type === 'homeassistant-entities') {
-      const i = (state.boot.integrations || []).find(x => x.id === widget.config?.integration_id); return widget.title || i?.name || 'Home Assistant';
+      return widget.title || 'Home Assistant';
     }
     return 'Widget';
   }
@@ -428,6 +430,24 @@
       const trafficEnabled=integrationOption(integration,'show_traffic',true)&&summary.traffic;const h=historyBucket(`${integration.id}:traffic`);const rx=h.a.length?h.a.at(-1):null,tx=h.b.length?h.b.at(-1):null;
       const traffic=trafficEnabled?`<div class="opn-traffic"><div class="mini-graph-label"><span>${esc(summary.traffic.label||summary.traffic.interface||cfg.traffic_interface||'WAN')} Traffic</span><strong>${rx===null||tx===null?'Messung startet…':`↓ ${fmtRate(rx)} · ↑ ${fmtRate(tx)}`}</strong></div><div class="traffic-sparks">${sparkline(h.a,'rx')}${sparkline(h.b,'tx')}</div></div>`:'';
       return `<div class="opn-widget"><div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state active">API online</span></div><div class="metric-grid opn-metrics">${metrics.map(([k,v])=>`<div class="metric"><div class="metric-label">${esc(k)}</div><div class="metric-value">${esc(String(v))}</div></div>`).join('')}</div>${traffic}</div>`;
+    }
+    if (type === 'proxmox') {
+      const metrics=[];
+      if(integrationOption(integration,'show_nodes',true))metrics.push(['Nodes',`${fmt(summary.nodes_online)}/${fmt(summary.nodes_total)}`]);
+      if(integrationOption(integration,'show_guests',true))metrics.push(['Guests',`${fmt(summary.guests_running)}/${fmt(summary.guests_total)}`]);
+      if(integrationOption(integration,'show_cpu',true)&&summary.cpu_percent!==null&&summary.cpu_percent!==undefined)metrics.push(['CPU',`${fmt(summary.cpu_percent)}%`]);
+      if(integrationOption(integration,'show_memory',true)&&summary.memory_percent!==null&&summary.memory_percent!==undefined)metrics.push(['RAM',`${fmt(summary.memory_percent)}%`]);
+      if(integrationOption(integration,'show_storage',true)&&summary.storage_percent!==null&&summary.storage_percent!==undefined)metrics.push(['Storage',`${fmt(summary.storage_percent)}%`]);
+      return `<div class="infra-widget"><div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state active">Online</span></div><div class="metric-grid infra-metrics">${metrics.map(([k,v])=>`<div class="metric"><div class="metric-label">${esc(k)}</div><div class="metric-value">${esc(String(v))}</div></div>`).join('')}</div><div class="infra-foot"><span>${fmt(summary.vms_total)} VM${Number(summary.vms_total)===1?'':'s'}</span><span>${fmt(summary.lxcs_total)} LXC${Number(summary.lxcs_total)===1?'':'s'}</span>${summary.version?`<span>VE ${esc(summary.version)}</span>`:''}</div></div>`;
+    }
+    if (type === 'zabbix') {
+      const metrics=[];
+      if(integrationOption(integration,'show_hosts',true))metrics.push(['Hosts',`${fmt(summary.hosts_monitored)}/${fmt(summary.hosts_total)}`]);
+      if(integrationOption(integration,'show_problems',true)){metrics.push(['Problems',fmt(summary.problems_total)]);metrics.push(['High',fmt(summary.problems_high)]);}
+      const severityNames=['Not classified','Information','Warning','Average','High','Disaster'];
+      const recent=integrationOption(integration,'show_recent_problems',true)&&Array.isArray(summary.recent_problems)?summary.recent_problems:[];
+      const recentHtml=recent.length?`<div class="zabbix-problems">${recent.map(p=>`<div class="zabbix-problem"><span class="severity severity-${Math.max(0,Math.min(5,Number(p.severity)||0))}">${esc(severityNames[Math.max(0,Math.min(5,Number(p.severity)||0))])}</span><span title="${attr(p.name||'')}">${esc(p.name||'Problem')}</span></div>`).join('')}</div>`:'';
+      return `<div class="infra-widget"><div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state active">Online</span></div><div class="metric-grid infra-metrics">${metrics.map(([k,v])=>`<div class="metric"><div class="metric-label">${esc(k)}</div><div class="metric-value">${esc(String(v))}</div></div>`).join('')}</div>${recentHtml}<div class="infra-foot">${summary.hosts_maintenance?`<span>${fmt(summary.hosts_maintenance)} in Wartung</span>`:''}${summary.version?`<span>Zabbix ${esc(summary.version)}</span>`:''}</div></div>`;
     }
     if (type === 'generic-api') {
       const values = Object.entries(summary.values || {}).slice(0,4);

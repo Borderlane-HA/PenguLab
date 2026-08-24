@@ -1,66 +1,20 @@
 # PenguLab Roadmap
 
-## PenguLab 2.1 — dashboard & integration reliability
+PenguLab 2.2 focuses on a small, useful Homelab control center rather than replacing the native management UIs of connected services.
 
-- [x] deterministic draft/save/cancel dashboard layout editing
-- [x] server-side dashboard overlap validation
-- [x] generic OPNsense interface discovery and traffic selection
-- [x] current OPNsense statistics/counter parsing
-- [x] optional Pi-hole recent blocked domains
-- [x] optional AdGuard Home recent blocked domains
+## Shipped
 
-## PenguLab 2.0 — completed foundation
+- Flexible dashboard and app shortcuts
+- PenguHub package model
+- Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE and Zabbix integrations
+- RSS and Generic API widgets
+- IP Manager with discovery
+- Local users and integration permissions
+- Docker and Proxmox LXC installation
 
-- [x] SQLite core storage
-- [x] automatic 1.x app/settings migration
-- [x] IP Manager legacy migration
-- [x] App / Integration / Widget separation
-- [x] PenguHub local curated package catalog
-- [x] dashboard drag + resize
-- [x] global Ctrl+K search
-- [x] IP Manager as an add-on
-- [x] Pi-hole v6 connector
-- [x] AdGuard Home connector
-- [x] OPNsense read-only connector
-- [x] RSS widget
-- [x] Generic JSON API connector
-- [x] encrypted server-side secrets
-- [x] Home Assistant entity integration (sensor, switch, light, cover)
+## Next ideas
 
-## Alpha 2 — dashboard polish
-
-- [ ] dashboard layout presets and multiple dashboards
-- [x] richer service-specific widgets and charts (first DNS/OPNsense pass)
-- [x] widget/integration display configuration (first pass)
-- [x] persistent integration snapshots/history and configurable live refresh cadence
-- [ ] mobile dashboard editing improvements
-- [ ] service status aggregation and last-refresh controls
-- [ ] localization pass for all new 2.0 UI strings
-- [ ] import/export UX with conflict preview
-
-## Alpha 3 — Network intelligence
-
-- [x] OPNsense interface/ARP discovery foundation
-- [ ] Kea subnet/reservation import
-- [ ] IP Manager source/reconciliation view
-- [ ] duplicate IP/MAC warnings and scan reconciliation
-- [x] subnet utilization visualization
-- [ ] optional read-only periodic sync
-
-## Beta — PenguHub repository
-
-- [ ] remote signed package catalog
-- [ ] checksums/signature verification
-- [ ] compatibility constraints
-- [ ] update and rollback support
-- [ ] permission review UI
-- [ ] third-party package developer tooling
-
-## Later candidates
-
-- Proxmox deeper metrics/actions
-- Uptime Kuma
-- EVCC
-- Nextcloud
-- Docker/Portainer
-- custom webhooks / status sources
+- More compact infrastructure widgets and optional per-node Proxmox views
+- Better Zabbix filtering by host group / severity
+- Signed remote PenguHub catalog
+- Additional Homelab integrations based on demand

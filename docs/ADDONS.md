@@ -80,3 +80,8 @@ Permissions are currently descriptive metadata exposed by PenguHub. Bundled pack
 The bundled Home Assistant package is an example of a connector with a package-specific widget. It uses a server-side Long-Lived Access Token and exposes only explicit controls for selected `switch`, `light` and `cover` entities.
 
 The future remote PenguHub should make permissions enforceable before third-party packages are supported.
+
+
+## PenguLab 2.2 bundled integrations
+
+PenguHub also ships read-only **Proxmox VE** monitoring and **Zabbix** monitoring connectors. Both keep API credentials server-side and reuse the normal integration/widget permission model.

@@ -296,7 +296,7 @@ Usage:
   pengulabctl update
   pengulabctl channel stable
   pengulabctl channel prerelease
-  pengulabctl version 2.1.1
+  pengulabctl version 2.2.0
   pengulabctl backup [target.tar.gz]
   pengulabctl logs
   pengulabctl restart
@@ -321,7 +321,11 @@ esac
 CTL
   chmod +x "$tmp"
   pct push "$ctid" "$tmp" /usr/local/bin/pengulabctl --perms 0755
+  # `pct enter` on current Debian/Proxmox combinations can start root with a
+  # minimal PATH that omits /usr/local/bin. Keep the canonical copy under
+  # /usr/local/bin, but expose stable compatibility links in both sbin paths.
   pct exec "$ctid" -- ln -sfn /usr/local/bin/pengulabctl /usr/local/sbin/pengulabctl
+  pct exec "$ctid" -- ln -sfn /usr/local/bin/pengulabctl /usr/bin/pengulabctl
   rm -f "$tmp"
 }
 
@@ -343,7 +347,7 @@ services:
     volumes:
       - ./data:/app/data
 COMPOSEEOF
-cd /opt/pengulab && pengulabctl update"
+cd /opt/pengulab && /usr/bin/pengulabctl update"
 }
 
 container_ip() {
@@ -373,7 +377,7 @@ main() {
     1) tag="latest"; channel_label="Stable" ;;
     2) tag="prerelease"; channel_label="Pre-release" ;;
     3)
-      prompt tag "Exact Docker release tag (e.g. 2.1.1)" "2.1.1"
+      prompt tag "Exact Docker release tag (e.g. 2.2.0)" "2.2.0"
       validate_tag "$tag"
       channel_label="Pinned: $tag"
       ;;

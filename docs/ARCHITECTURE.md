@@ -102,3 +102,8 @@ A future remote PenguHub must add, at minimum:
 7. a review/trust policy for third-party packages
 
 Until these exist, downloading arbitrary PHP from a remote catalog is intentionally out of scope.
+
+
+## PenguLab 2.2 bundled integrations
+
+PenguHub also ships read-only **Proxmox VE** monitoring and **Zabbix** monitoring connectors. Both keep API credentials server-side and reuse the normal integration/widget permission model.

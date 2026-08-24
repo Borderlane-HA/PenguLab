@@ -1,0 +1,121 @@
+{
+  "id": "proxmox",
+  "name": "Proxmox VE",
+  "version": "1.0.0",
+  "category": "Infrastructure",
+  "author": "Borderlane-HA",
+  "description": "Keep Proxmox nodes, VMs and LXCs visible from PenguLab with a read-only API token.",
+  "icon": "server",
+  "connector": "connector.php",
+  "permissions": [
+    "network.http",
+    "secrets.read"
+  ],
+  "integration": {
+    "type": "proxmox",
+    "name": "Proxmox VE",
+    "description": "Proxmox VE REST API (read-only monitoring)",
+    "fields": [
+      {
+        "key": "base_url",
+        "label": "Proxmox URL",
+        "type": "url",
+        "placeholder": "https://proxmox.local:8006",
+        "required": true
+      },
+      {
+        "key": "username",
+        "label": "API Token ID",
+        "type": "text",
+        "placeholder": "pengulab@pve!monitoring",
+        "required": true
+      },
+      {
+        "key": "token_secret",
+        "label": "API Token Secret",
+        "type": "password",
+        "secret": true,
+        "required": true
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "widget_options": [
+      {
+        "key": "refresh_interval",
+        "label": "Live-Aktualisierung",
+        "type": "select",
+        "default": "15",
+        "options": [
+          {
+            "value": "5",
+            "label": "alle 5 Sekunden"
+          },
+          {
+            "value": "10",
+            "label": "alle 10 Sekunden"
+          },
+          {
+            "value": "15",
+            "label": "alle 15 Sekunden"
+          },
+          {
+            "value": "30",
+            "label": "alle 30 Sekunden"
+          },
+          {
+            "value": "60",
+            "label": "alle 60 Sekunden"
+          }
+        ]
+      },
+      {
+        "key": "show_nodes",
+        "label": "Nodes anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_guests",
+        "label": "VMs & LXCs anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_cpu",
+        "label": "CPU anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_memory",
+        "label": "RAM anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_storage",
+        "label": "Storage anzeigen",
+        "type": "boolean",
+        "default": true
+      }
+    ]
+  },
+  "widgets": [
+    {
+      "type": "integration-summary",
+      "integrationType": "proxmox",
+      "name": "Proxmox VE",
+      "description": "Nodes, guests and resource usage at a glance.",
+      "icon": "server",
+      "defaultSize": [
+        4,
+        2
+      ]
+    }
+  ]
+}

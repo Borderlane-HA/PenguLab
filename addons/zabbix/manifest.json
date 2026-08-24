@@ -1,0 +1,98 @@
+{
+  "id": "zabbix",
+  "name": "Zabbix",
+  "version": "1.0.0",
+  "category": "Monitoring",
+  "author": "Borderlane-HA",
+  "description": "Show monitored hosts and current Zabbix problems next to the rest of your Homelab.",
+  "icon": "monitor",
+  "connector": "connector.php",
+  "permissions": [
+    "network.http",
+    "secrets.read"
+  ],
+  "integration": {
+    "type": "zabbix",
+    "name": "Zabbix",
+    "description": "Zabbix JSON-RPC API using an API token",
+    "fields": [
+      {
+        "key": "base_url",
+        "label": "Zabbix URL",
+        "type": "url",
+        "placeholder": "https://zabbix.local",
+        "required": true
+      },
+      {
+        "key": "api_token",
+        "label": "API Token",
+        "type": "password",
+        "secret": true,
+        "required": true
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "widget_options": [
+      {
+        "key": "refresh_interval",
+        "label": "Live-Aktualisierung",
+        "type": "select",
+        "default": "30",
+        "options": [
+          {
+            "value": "10",
+            "label": "alle 10 Sekunden"
+          },
+          {
+            "value": "15",
+            "label": "alle 15 Sekunden"
+          },
+          {
+            "value": "30",
+            "label": "alle 30 Sekunden"
+          },
+          {
+            "value": "60",
+            "label": "alle 60 Sekunden"
+          }
+        ]
+      },
+      {
+        "key": "show_hosts",
+        "label": "Hosts anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_problems",
+        "label": "Probleme anzeigen",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "show_recent_problems",
+        "label": "Letzte Probleme anzeigen",
+        "type": "boolean",
+        "default": true
+      }
+    ]
+  },
+  "widgets": [
+    {
+      "type": "integration-summary",
+      "integrationType": "zabbix",
+      "name": "Zabbix",
+      "description": "Hosts and open monitoring problems.",
+      "icon": "monitor",
+      "defaultSize": [
+        4,
+        2
+      ]
+    }
+  ]
+}

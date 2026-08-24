@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.0
+
+- Added Proxmox VE PenguHub integration with read-only node, guest, CPU, RAM and storage status.
+- Added Zabbix PenguHub integration with host and problem overview through API tokens.
+- Home Assistant widgets without a custom title no longer show a redundant Home Assistant header.
+- Fixed `pengulabctl` availability after `pct enter` by adding a `/usr/bin` compatibility link in new Proxmox installations.
+- Reworked README into a shorter, user-focused introduction with a generated header and current dashboard screenshot.
+
 ## 2.1.1
 
 ### Fixed
