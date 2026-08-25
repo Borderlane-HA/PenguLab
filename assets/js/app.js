@@ -85,6 +85,26 @@
     return `<div class="app-icon ${className}">${image ? `<img src="${attr(image)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="app-fallback" style="display:none">${esc(initials(app?.name))}</span>` : `<span class="app-fallback">${esc(initials(app?.name))}</span>`}</div>`;
   }
 
+  function groupApps(widget) {
+    const ids = Array.isArray(widget?.config?.app_ids) ? widget.config.app_ids.map(String) : [];
+    const byId = new Map((state.boot?.apps || []).map(app => [String(app.id), app]));
+    return ids.map(id => byId.get(id)).filter(Boolean);
+  }
+
+  function groupMiniIcon(app) {
+    const image = app?.image || '';
+    return `<span class="app-group-mini-icon">${image ? `<img src="${attr(image)}" alt="" onerror="this.style.display='none'"><span>${esc(initials(app?.name))}</span>` : `<span>${esc(initials(app?.name))}</span>`}</span>`;
+  }
+
+  function groupedAppIds(exceptWidgetId = '') {
+    const ids = new Set();
+    for (const widget of state.boot?.widgets || []) {
+      if (widget.type !== 'app-group' || widget.id === exceptWidgetId) continue;
+      for (const id of widget.config?.app_ids || []) ids.add(String(id));
+    }
+    return ids;
+  }
+
   async function boot() {
     try {
       const data = await api('bootstrap');
@@ -202,7 +222,7 @@
     const dashboardActions=isAdmin()?(state.editMode
       ? `<button class="btn" id="cancelLayoutBtn">Abbrechen</button><button class="btn primary" id="saveLayoutBtn">Speichern</button>`
       : `<button class="btn" id="editLayoutBtn">Layout bearbeiten</button><button class="btn primary" id="addWidgetBtn">+ Widget</button>`):'';
-    const editHint=state.editMode?(isPhoneEditor()?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel halten und vertikal verschieben. Größe über ↕ ändern.':'<span class="edit-mode-pill">Bearbeitungsmodus</span> Frei verschieben und skalieren · 8 px Snap horizontal & vertikal. Andere Kacheln machen automatisch Platz.'):'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
+    const editHint=state.editMode?(isPhoneEditor()?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel halten und vertikal verschieben · App auf App halten = Gruppe · Größe über ↕ ändern.':'<span class="edit-mode-pill">Bearbeitungsmodus</span> Frei verschieben und skalieren · 8 px Snap · App auf App halten = Gruppe · andere Kacheln machen automatisch Platz.'):'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
     appRoot.innerHTML = pageHead('Control Center', title, 'Apps, Services und Homelab-Status an einem Ort.', dashboardActions) + (isAdmin()?`<div class="dashboard-toolbar"><span class="edit-hint">${state.editMode?editHint:esc(editHint)}</span></div>`:'') +
     `<div class="dashboard-grid ${isCanvasLayout()?'canvas-layout':''}" id="dashboardGrid" style="${isCanvasLayout()?`--canvas-height:${canvasHeightPx(widgets)}px`:''}">${widgets.length ? widgets.map(widgetShell).join('') : `<div class="empty-dashboard"><h3>Dein Dashboard ist bereit</h3><p>${isAdmin()?'Füge Apps, Statuskarten, RSS oder Add-on-Widgets hinzu.':'Für deinen Benutzer sind noch keine Dashboard-Widgets freigegeben.'}</p>${isAdmin()?'<button class="btn primary" id="emptyAddWidget">+ Erstes Widget</button>':''}</div>`}</div>`;
 
@@ -229,10 +249,12 @@
     const title = widget.title || widgetTitle(widget);
     const typeClass = `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
     const visualWidth = isCanvasLayout() ? (Number(widget.w)||0)*CANVAS_SNAP : (Number(widget.w)||0)*56;
+    const visualHeight = isCanvasLayout() ? (Number(widget.h)||0)*CANVAS_SNAP : (Number(widget.h)||0)*40;
     const sizeClass = widget.type === 'app' ? (visualWidth < 150 ? 'app-widget-xs' : visualWidth < 260 ? 'app-widget-sm' : 'app-widget-lg') : '';
+    const groupSizeClass = widget.type === 'app-group' ? ((visualWidth < 135 || visualHeight < 110) ? 'app-group-sm' : (visualWidth > 220 && visualHeight > 150 ? 'app-group-lg' : 'app-group-md')) : '';
     const haCount = widget.type === 'homeassistant-entities' ? (Array.isArray(widget.config?.entity_ids) ? widget.config.entity_ids.length : 0) : 0;
     const haSizeClass = widget.type === 'homeassistant-entities' ? `${haCount===1?'ha-widget-single ':''}${visualWidth<150?'ha-widget-xs ':''}${haCount>=4||visualWidth<280?'ha-widget-dense':''}`.trim() : '';
-    const settingsButton = isAdmin() && ['app','homeassistant-entities','integration-summary'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
+    const settingsButton = isAdmin() && ['app','app-group','homeassistant-entities','integration-summary'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
     const mobileSize = ['small','medium','large'].includes(String(widget.config?.mobile_size||'')) ? String(widget.config.mobile_size) : 'auto';
     const phoneSizeButton = isAdmin() ? `<button class="widget-mini-btn widget-mobile-size" data-id="${attr(widget.id)}" title="Größe auf Mobilgeräten">↕</button>` : '';
     const storedTitle = String(widget.title || '').trim();
@@ -243,7 +265,7 @@
     const autoCompactHeadTypes = ['homeassistant-entities','integration-summary','clock'];
     const hideHead = autoCompactHeadTypes.includes(widget.type) && !hasCustomTitle && !state.editMode;
     const head = hideHead ? '' : `<div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${phoneSizeButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>`;
-    return `<section class="widget ${typeClass} ${sizeClass} ${haSizeClass} mobile-size-${mobileSize} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||8};--cx:${Number(widget.x)||0};--cy:${Number(widget.y)||0};--cw:${Number(widget.w)||3};--ch:${Number(widget.h)||8};--mobile-order:${mobileOrderOf(widget)}">
+    return `<section class="widget ${typeClass} ${sizeClass} ${groupSizeClass} ${haSizeClass} mobile-size-${mobileSize} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||8};--cx:${Number(widget.x)||0};--cy:${Number(widget.y)||0};--cw:${Number(widget.w)||3};--ch:${Number(widget.h)||8};--mobile-order:${mobileOrderOf(widget)}">
       ${head}
       <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
     </section>`;
@@ -253,6 +275,7 @@
     if (widget.type === 'app') {
       const app = (state.boot.apps || []).find(a => a.id === widget.config?.app_id); return app?.name || 'App';
     }
+    if (widget.type === 'app-group') return widget.title || 'Apps';
     if (widget.type === 'clock') return 'Zeit';
     if (widget.type === 'note') return 'Notiz';
     if (widget.type === 'rss') return 'News';
@@ -303,6 +326,9 @@
     if (!body) return;
     if (state.widgetInFlight.get(widget.id)) return;
     try {
+      if (widget.type === 'app-group') {
+        renderWidgetData(body, widget, {kind:'app-group', apps:groupApps(widget), title:widget.title || 'Apps'}); return;
+      }
       if (widget.type === 'clock') {
         renderClock(body); return;
       }
@@ -335,6 +361,13 @@
       const requested = widget.config?.layout || 'auto';
       const layout = requested === 'auto' ? (widget.w <= 2 ? 'vertical' : (widget.h >= 8 && widget.w <= 3 ? 'vertical' : 'horizontal')) : requested;
       body.innerHTML = `<a class="app-widget app-widget-${size} app-layout-${attr(layout)}" href="${attr(app.url)}" target="_blank" rel="noopener" title="${attr(app.name)} öffnen">${appIcon(app)}<div class="app-widget-copy"><div class="app-widget-name">${esc(app.name)}</div><div class="app-widget-meta">${esc(app.category || hostOf(app.url))}</div></div><span class="app-widget-open" aria-hidden="true">↗</span></a>`;
+      body.querySelector('.app-widget')?.addEventListener('click', e=>{if(state.editMode){e.preventDefault();e.stopPropagation();}});
+      return;
+    }
+    if (data.kind === 'app-group') {
+      const apps = data.apps || groupApps(widget); const preview = apps.slice(0,4);
+      body.innerHTML = `<button class="app-group-widget" type="button" title="${attr(widget.title || 'Apps')} öffnen"><span class="app-group-preview">${preview.map(groupMiniIcon).join('')}${apps.length>4?`<span class="app-group-count">+${apps.length-4}</span>`:''}</span><span class="app-group-name">${esc(widget.title || 'Apps')}</span><span class="app-group-meta">${apps.length} App${apps.length===1?'':'s'}</span></button>`;
+      body.querySelector('.app-group-widget')?.addEventListener('click', e=>{e.preventDefault();e.stopPropagation();if(!state.editMode)openAppGroup(widget);});
       return;
     }
     if (data.kind === 'ipmanager') {
@@ -585,7 +618,9 @@
       // touch devices than aiming for a tiny drag handle.
       el.addEventListener('pointerdown', ev => {
         if (ev.button !== undefined && ev.button !== 0) return;
-        if (ev.target.closest('.widget-mini-btn,.widget-resize,.widget-drag-handle,button,a,input,select,textarea,label')) return;
+        if (ev.target.closest('.widget-mini-btn,.widget-resize,.widget-drag-handle,input,select,textarea,label')) return;
+        const button=ev.target.closest('button');if(button && !(widget.type==='app-group'&&button.classList.contains('app-group-widget')))return;
+        const link=ev.target.closest('a'); if(link && !['app','app-group'].includes(widget.type)) return;
         startDrag(ev, el, widget, grid);
       });
       $('.widget-drag-handle', el)?.addEventListener('pointerdown', ev => startDrag(ev, el, widget, grid));
@@ -598,7 +633,9 @@
       const widget=widgets.find(w=>w.id===el.dataset.widgetId); if(!widget)return;
       const start=ev=>{
         if(ev.button!==undefined&&ev.button!==0)return;
-        if(ev.target.closest('.widget-mini-btn,button,a,input,select,textarea,label'))return;
+        if(ev.target.closest('.widget-mini-btn,input,select,textarea,label'))return;
+        const button=ev.target.closest('button');if(button&&!(widget.type==='app-group'&&button.classList.contains('app-group-widget')))return;
+        const link=ev.target.closest('a');if(link&&!['app','app-group'].includes(widget.type))return;
         startMobileDrag(ev,el,widget,grid,widgets);
       };
       el.addEventListener('pointerdown',start);
@@ -609,22 +646,29 @@
   function startMobileDrag(ev,el,widget,grid,widgets){
     ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
     const ordered=[...widgets].sort((a,b)=>mobileOrderOf(a)-mobileOrderOf(b));
-    const originalOrder=ordered.map(w=>w.id);let current=[...originalOrder];
+    const originalOrder=ordered.map(w=>w.id);let current=[...originalOrder];const dirtyBefore=state.layoutDirty;
+    let groupTarget=null,groupSince=0,readyTimer=null;
+    const clearTarget=()=>{if(readyTimer)clearTimeout(readyTimer);readyTimer=null;groupTarget=null;groupSince=0;clearGroupDropHighlight(grid);};
+    const setTarget=target=>{if(!target){clearTarget();return;}if(groupTarget?.widget?.id===target.widget.id)return;clearTarget();groupTarget=target;groupSince=performance.now();target.el.classList.add('group-drop-target');readyTimer=setTimeout(()=>{if(groupTarget?.widget?.id===target.widget.id)target.el.classList.add('group-drop-ready');},350);};
     const apply=ids=>{ids.forEach((id,index)=>{const w=widgets.find(x=>x.id===id);if(!w)return;w.config={...(w.config||{}),mobile_order:index};const node=grid.querySelector(`[data-widget-id="${CSS.escape(id)}"]`);if(node){node.style.setProperty('--mobile-order',index);node.style.order=String(index);}})};
     const move=e=>{
       e.preventDefault?.();
+      if(widget.type==='app'){
+        const target=findAppGroupDropTarget(e.clientX,e.clientY,widget.id,grid);setTarget(target);
+        if(target)return;
+      }
       const others=current.filter(id=>id!==widget.id);
-      let target=others.length;
-      for(let i=0;i<others.length;i++){const node=grid.querySelector(`[data-widget-id="${CSS.escape(others[i])}"]`);if(!node)continue;const r=node.getBoundingClientRect();if(e.clientY<r.top+r.height/2){target=i;break;}}
-      const next=[...others];next.splice(target,0,widget.id);
+      let targetIndex=others.length;
+      for(let i=0;i<others.length;i++){const node=grid.querySelector(`[data-widget-id="${CSS.escape(others[i])}"]`);if(!node)continue;const r=node.getBoundingClientRect();if(e.clientY<r.top+r.height/2){targetIndex=i;break;}}
+      const next=[...others];next.splice(targetIndex,0,widget.id);
       if(next.join('|')!==current.join('|')){current=next;apply(current);}
     };
-    const up=()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(current.join('|')!==originalOrder.join('|'))markLayoutDirty();};
+    const up=async()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);const target=groupTarget&&performance.now()-groupSince>=320?groupTarget.widget:null;clearTarget();if(target){apply(originalOrder);await applyAppGrouping(widget,target,positionSnapshot(widgets),widgets,grid,dirtyBefore);return;}if(current.join('|')!==originalOrder.join('|'))markLayoutDirty();};
     window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
 
-  function canvasMinW(widget){ return widget?.type==='app'||widget?.type==='homeassistant-entities' ? 11 : 20; }
-  function canvasMinH(widget){ return widget?.type==='app'||widget?.type==='homeassistant-entities' ? 9 : 11; }
+  function canvasMinW(widget){ return ['app','app-group','homeassistant-entities'].includes(widget?.type) ? 11 : 20; }
+  function canvasMinH(widget){ return ['app','app-group','homeassistant-entities'].includes(widget?.type) ? 9 : 11; }
   function canvasCols(grid){ return Math.max(1,Math.floor(grid.getBoundingClientRect().width/CANVAS_SNAP)); }
   function canvasHeightPx(widgets){
     if(!isCanvasLayout()) return 240;
@@ -667,11 +711,22 @@
   function layoutChangedFrom(base,widgets){return (widgets||[]).some(w=>{const b=base[w.id];return !b||w.x!==b.x||w.y!==b.y||w.w!==b.w||w.h!==b.h;});}
   function startDrag(ev,el,widget,grid){
     ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
-    const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]};
-    const move=e=>{e.preventDefault?.();const dx=Math.round((e.clientX-sx)/m.col);const dy=Math.round((e.clientY-sy)/m.unitY);const maxCols=m.cols||GRID_COLS;const candidate={...original,x:Math.max(0,Math.min(maxCols-widget.w,original.x+dx)),y:Math.max(0,original.y+dy)};applyPositionMap(reflowPreview(widget.id,candidate,base,widgets,maxCols),widgets,grid);};
-    const up=()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(layoutChangedFrom(base,widgets))markLayoutDirty();};
+    const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]},dirtyBefore=state.layoutDirty;
+    let groupTarget=null,groupSince=0,readyTimer=null;
+    const clearTarget=()=>{if(readyTimer)clearTimeout(readyTimer);readyTimer=null;groupTarget=null;groupSince=0;clearGroupDropHighlight(grid);};
+    const setTarget=target=>{if(!target){clearTarget();return;}if(groupTarget?.widget?.id===target.widget.id)return;clearTarget();groupTarget=target;groupSince=performance.now();target.el.classList.add('group-drop-target');readyTimer=setTimeout(()=>{if(groupTarget?.widget?.id===target.widget.id)target.el.classList.add('group-drop-ready');},350);};
+    const move=e=>{
+      e.preventDefault?.();const dx=Math.round((e.clientX-sx)/m.col);const dy=Math.round((e.clientY-sy)/m.unitY);const maxCols=m.cols||GRID_COLS;const candidate={...original,x:Math.max(0,Math.min(maxCols-widget.w,original.x+dx)),y:Math.max(0,original.y+dy)};
+      if(widget.type==='app'){
+        const target=findAppGroupDropTarget(e.clientX,e.clientY,widget.id,grid);setTarget(target);
+        if(target){const preview={};for(const [id,pos] of Object.entries(base))preview[id]={...pos};preview[widget.id]=candidate;applyPositionMap(preview,widgets,grid);return;}
+      }
+      applyPositionMap(reflowPreview(widget.id,candidate,base,widgets,maxCols),widgets,grid);
+    };
+    const up=async()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);const target=groupTarget&&performance.now()-groupSince>=320?groupTarget.widget:null;clearTarget();if(target){await applyAppGrouping(widget,target,base,widgets,grid,dirtyBefore);return;}if(layoutChangedFrom(base,widgets))markLayoutDirty();};
     window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
+
   function startResize(ev,el,widget,grid){
     ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
     const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]};
@@ -686,11 +741,76 @@
     window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
 
+  function openAppGroup(widget) {
+    const apps=groupApps(widget);
+    showModal(widget.title||'Apps',`${apps.length} App${apps.length===1?'':'s'} in dieser Gruppe.`,
+      `<div class="app-folder-grid">${apps.map(app=>`<a class="app-folder-item" href="${attr(app.url)}" target="_blank" rel="noopener">${groupMiniIcon(app)}<strong>${esc(app.name)}</strong><small>${esc(app.category||hostOf(app.url))}</small></a>`).join('')||'<div class="widget-loading">Die Gruppe ist leer.</div>'}</div>`,
+      `${isAdmin()?'<button class="btn" id="editOpenedGroup">Bearbeiten</button>':''}<button class="btn primary" data-close-modal>Schließen</button>`,
+      modal=>{$('#editOpenedGroup',modal)?.addEventListener('click',()=>{closeModal();openAppGroupSettings(widget);});});
+  }
+
+  function openCreateAppGroupModal() {
+    const used=groupedAppIds();
+    const apps=(state.boot.apps||[]).filter(a=>!used.has(String(a.id)));
+    if(apps.length<2){toast('Für eine neue Gruppe werden mindestens zwei noch nicht gruppierte Apps benötigt.','error');return;}
+    const rows=apps.map(app=>`<label class="group-app-pick"><input type="checkbox" data-group-pick="${attr(app.id)}"><span>${groupMiniIcon(app)}</span><span><strong>${esc(app.name)}</strong><small>${esc(app.category||hostOf(app.url))}</small></span></label>`).join('');
+    showModal('App-Gruppe erstellen','Wähle mindestens zwei Apps. Bereits gruppierte Apps werden nicht doppelt angeboten.',`<div class="field-row"><label>Name</label><input id="groupName" placeholder="z. B. Server, Netzwerk, Smart Home"></div><div class="app-group-pick-list">${rows}</div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="createAppGroup">Gruppe erstellen</button>`,modal=>{
+      $('#createAppGroup',modal).onclick=async()=>{const ids=$$('[data-group-pick]',modal).filter(x=>x.checked).map(x=>x.dataset.groupPick);if(ids.length<2){toast('Wähle mindestens zwei Apps.','error');return;}try{const d=await api('widgets/group',{body:{action:'create_from_apps',app_ids:ids,title:$('#groupName',modal).value.trim()}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('App-Gruppe erstellt.');}catch(e){toast(e.message,'error')}};
+    });
+  }
+
+  function openAppGroupSettings(widget) {
+    let ids=(widget.config?.app_ids||[]).map(String).filter(Boolean);
+    const available=()=>{const used=groupedAppIds(widget.id);return (state.boot.apps||[]).filter(a=>!ids.includes(String(a.id))&&!used.has(String(a.id)));};
+    const appById=id=>(state.boot.apps||[]).find(a=>String(a.id)===String(id));
+    const body=()=>`<div class="field-row"><label>Gruppenname</label><input id="appGroupTitle" value="${attr(widget.title||'Apps')}"></div><div class="modal-section-title">Apps in der Gruppe</div><div class="app-group-editor-list" id="appGroupEditorList">${ids.map((id,index)=>{const app=appById(id);if(!app)return'';return `<div class="app-group-editor-row" draggable="true" data-group-row="${attr(id)}"><span class="group-sort-handle" title="Sortieren">⠿</span>${groupMiniIcon(app)}<span class="app-group-editor-copy"><strong>${esc(app.name)}</strong><small>${esc(app.category||hostOf(app.url))}</small></span><button type="button" class="widget-mini-btn" data-group-up="${attr(id)}" title="Nach oben">↑</button><button type="button" class="widget-mini-btn" data-group-down="${attr(id)}" title="Nach unten">↓</button><button type="button" class="widget-mini-btn" data-group-extract="${attr(id)}" title="Auf Dashboard">↗</button></div>`}).join('')}</div><div class="modal-section-title">App hinzufügen</div><div class="group-add-row"><select id="groupAddApp">${available().map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('')||'<option value="">Keine weitere App verfügbar</option>'}</select><button type="button" class="btn small" id="groupAddAppBtn">+ App</button></div>`;
+    showModal('App-Gruppe bearbeiten','Reihenfolge ändern, Apps hinzufügen oder wieder aufs Dashboard legen.',body(),`<button class="btn danger" id="dissolveGroup">Gruppe auflösen</button><button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveAppGroup">Speichern</button>`,modal=>{
+      const rerender=()=>{const title=$('#appGroupTitle',modal)?.value||widget.title||'Apps';const container=$('.modal-body',modal);container.innerHTML=body();$('#appGroupTitle',modal).value=title;bindRows();};
+      const moveId=(id,delta)=>{const from=ids.indexOf(id),to=Math.max(0,Math.min(ids.length-1,from+delta));if(from<0||from===to)return;ids.splice(to,0,ids.splice(from,1)[0]);rerender();};
+      const bindRows=()=>{
+        $$('[data-group-up]',modal).forEach(b=>b.onclick=()=>moveId(b.dataset.groupUp,-1));
+        $$('[data-group-down]',modal).forEach(b=>b.onclick=()=>moveId(b.dataset.groupDown,1));
+        $$('[data-group-extract]',modal).forEach(b=>b.onclick=async()=>{if(!confirm('App aus der Gruppe lösen und als eigene Kachel aufs Dashboard legen?'))return;try{const d=await api('widgets/group',{body:{action:'extract_app',group_widget_id:widget.id,app_id:b.dataset.groupExtract}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('App wieder auf dem Dashboard.');}catch(e){toast(e.message,'error')}});
+        $('#groupAddAppBtn',modal)?.addEventListener('click',async()=>{const appId=$('#groupAddApp',modal).value;if(!appId)return;try{const d=await api('widgets/group',{body:{action:'add_app',group_widget_id:widget.id,app_id:appId}});state.boot.widgets=d.widgets;const fresh=state.boot.widgets.find(w=>w.id===widget.id);closeModal();if(fresh)openAppGroupSettings(fresh);else renderDashboard();toast('App zur Gruppe hinzugefügt.');}catch(e){toast(e.message,'error')}});
+        let dragId='';
+        $$('[data-group-row]',modal).forEach(row=>{row.ondragstart=e=>{dragId=row.dataset.groupRow;e.dataTransfer.effectAllowed='move';row.classList.add('sorting')};row.ondragend=()=>{dragId='';row.classList.remove('sorting')};row.ondragover=e=>{e.preventDefault();if(!dragId||dragId===row.dataset.groupRow)return;const from=ids.indexOf(dragId),to=ids.indexOf(row.dataset.groupRow);if(from<0||to<0)return;ids.splice(to,0,ids.splice(from,1)[0]);rerender();};});
+      };
+      bindRows();
+      $('#saveAppGroup',modal).onclick=async()=>{if(ids.length<2){toast('Eine Gruppe braucht mindestens zwei Apps.','error');return;}const title=$('#appGroupTitle',modal).value.trim()||'Apps';try{const d=await api('widgets/update',{body:{id:widget.id,title,config:{...(widget.config||{}),app_ids:ids}}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('App-Gruppe gespeichert.');}catch(e){toast(e.message,'error')}};
+      $('#dissolveGroup',modal).onclick=async()=>{if(!confirm('Gruppe auflösen und alle Apps wieder als einzelne Kacheln ablegen?'))return;try{const d=await api('widgets/group',{body:{action:'dissolve',group_widget_id:widget.id}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Gruppe aufgelöst.');}catch(e){toast(e.message,'error')}};
+    });
+  }
+
+  function findAppGroupDropTarget(clientX,clientY,sourceId,grid) {
+    for(const node of document.elementsFromPoint(clientX,clientY)){
+      const el=node.closest?.('.widget');if(!el||!grid.contains(el)||el.dataset.widgetId===sourceId)continue;
+      const target=(state.boot.widgets||[]).find(w=>w.id===el.dataset.widgetId);
+      if(target&&['app','app-group'].includes(target.type))return {widget:target,el};
+    }
+    return null;
+  }
+
+  function clearGroupDropHighlight(grid) {
+    $$('.group-drop-target,.group-drop-ready',grid).forEach(el=>el.classList.remove('group-drop-target','group-drop-ready'));
+  }
+
+  async function applyAppGrouping(sourceWidget,targetWidget,base,widgets,grid,dirtyBefore) {
+    applyPositionMap(base,widgets,grid);clearGroupDropHighlight(grid);
+    if(dirtyBefore){await commitLayoutEdit();if(state.editMode)return;}
+    try{
+      const body=targetWidget.type==='app-group'?{action:'add_widget',source_widget_id:sourceWidget.id,group_widget_id:targetWidget.id}:{action:'create_from_widgets',source_widget_id:sourceWidget.id,target_widget_id:targetWidget.id};
+      const d=await api('widgets/group',{body});state.boot.widgets=d.widgets;state.editMode=true;state.layoutOriginal=layoutSnapshot();state.layoutOriginalEngine=state.boot?.settings?.layout_engine||'canvas8';state.layoutDirty=false;renderDashboard();toast(targetWidget.type==='app-group'?'App zur Gruppe hinzugefügt.':'App-Gruppe erstellt.');
+    }catch(e){renderDashboard();toast(e.message,'error')}
+  }
+
   function openWidgetSettings(widget){
     if(widget.type==='app'){
       const current=widget.config?.layout||'auto';
       showModal('App-Widget Darstellung','Die Darstellung gilt nur für dieses Dashboard-Widget.',`<div class="field-row"><label>Layout</label><select id="appWidgetLayout"><option value="auto" ${current==='auto'?'selected':''}>Automatisch nach Größe</option><option value="vertical" ${current==='vertical'?'selected':''}>Icon oben · Text darunter</option><option value="horizontal" ${current==='horizontal'?'selected':''}>Icon links · Text daneben</option><option value="icon" ${current==='icon'?'selected':''}>Nur Icon</option></select></div><div class="widget-layout-preview"><span>1×1 wird bei Bedarf automatisch sehr kompakt dargestellt.</span></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetSettings">Speichern</button>`,modal=>{$('#saveWidgetSettings',modal).onclick=async()=>{const config={...(widget.config||{}),layout:$('#appWidgetLayout',modal).value};try{const d=await api('widgets/update',{body:{id:widget.id,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Darstellung gespeichert.');}catch(e){toast(e.message,'error')}}});
       return;
+    }
+    if(widget.type==='app-group'){
+      openAppGroupSettings(widget);return;
     }
     if(widget.type==='homeassistant-entities'){
       openHomeAssistantWidgetModal(widget.config?.integration_id, widget);return;
@@ -710,9 +830,10 @@
 
   function openWidgetPicker() {
     const integrations = state.boot.integrations || []; const apps = state.boot.apps || []; const catalog = state.boot.widgetCatalog || [];
-    const installedTypes = new Set(catalog.map(c=>c.type));
+    const installedTypes = new Set(catalog.map(c=>c.type)); const usedApps=groupedAppIds(); const freeApps=apps.filter(a=>!usedApps.has(String(a.id)));
     const cards = [
-      apps.length ? {key:'app',name:'App Shortcut',desc:'Eine vorhandene App als Schnellstart.',icon:'A'} : null,
+      freeApps.length ? {key:'app',name:'App Shortcut',desc:'Eine vorhandene App als Schnellstart.',icon:'A'} : null,
+      freeApps.length >= 2 ? {key:'app-group',name:'App-Gruppe',desc:'Mehrere Apps in einem kompakten Ordner bündeln.',icon:'▦'} : null,
       {key:'clock',name:'Clock',desc:'Uhrzeit und Datum.',icon:'C'},
       {key:'note',name:'Note',desc:'Kurze Notiz direkt auf dem Dashboard.',icon:'N'},
       installedTypes.has('rss') ? {key:'rss',name:'RSS / Atom',desc:'News und Feeds anzeigen.',icon:'R'} : null,
@@ -730,8 +851,12 @@
     if (key.startsWith('integration:')) {
       const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(integration?.type==='homeassistant'){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0]*2,h:size[1]*GRID_SCALE});return;
     }
+    if (key === 'app-group') {
+      openCreateAppGroupModal(); return;
+    }
     if (key === 'app') {
-      const opts=(state.boot.apps||[]).map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('');
+      const used=groupedAppIds();const available=(state.boot.apps||[]).filter(a=>!used.has(String(a.id)));if(!available.length){toast('Alle Apps auf dem Dashboard liegen bereits in Gruppen.','error');return;}
+      const opts=available.map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('');
       showModal('App Shortcut','Wähle App und Darstellung.',`<div class="form-grid"><div class="field-row full"><label>App</label><select id="widgetAppId">${opts}</select></div><div class="field-row full"><label>Darstellung</label><select id="widgetAppLayout"><option value="vertical">Icon oben · Text darunter</option><option value="horizontal">Icon links · Text daneben</option><option value="auto">Automatisch nach Größe</option><option value="icon">Nur Icon</option></select></div></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value,layout=$('#widgetAppLayout',modal).value;closeModal();createWidget({type:'app',config:{app_id:id,layout},w:2,h:1*GRID_SCALE});}});return;
     }
     if (key === 'note') {
@@ -746,7 +871,7 @@
     try{
       if(isCanvasLayout()){
         const oldW=Math.max(1,Number(payload.w)||6),oldH=Math.max(1,Number(payload.h)||8);
-        payload={...payload,config:{...(payload.config||{}),layout_engine:'canvas8'},w:Math.max(payload.type==='app'||payload.type==='homeassistant-entities'?11:20,Math.round(oldW*7)),h:Math.max(payload.type==='app'||payload.type==='homeassistant-entities'?9:11,Math.round(oldH*3.2))};
+        payload={...payload,config:{...(payload.config||{}),layout_engine:'canvas8'},w:Math.max(['app','app-group','homeassistant-entities'].includes(payload.type)?11:20,Math.round(oldW*7)),h:Math.max(['app','app-group','homeassistant-entities'].includes(payload.type)?9:11,Math.round(oldH*3.2))};
       }
       const d=await api('widgets/create',{body:payload});state.boot.widgets=d.widgets;if(state.view==='dashboard')renderDashboard();else render();toast('Widget hinzugefügt.');
     }catch(e){toast(e.message,'error')}
@@ -758,13 +883,13 @@
     const q = state.appSearch.trim().toLowerCase();
     const filtered = all.filter(a => (state.appCategory==='all'||a.category===state.appCategory) && (!q || `${a.name} ${a.url} ${a.description} ${a.category}`.toLowerCase().includes(q)));
     const categoryButtons = `<button class="category-chip ${state.appCategory==='all'?'active':''}" data-app-category="all">Alle <span>${all.length}</span></button>${cats.map(c=>`<button class="category-chip ${state.appCategory===c?'active':''}" data-app-category="${attr(c)}">${esc(c)} <span>${all.filter(a=>a.category===c).length}</span></button>`).join('')}`;
-    const compact = state.appView === 'compact'; const admin=isAdmin();
+    const compact = state.appView === 'compact'; const admin=isAdmin(); const grouped=groupedAppIds();
     const cards = filtered.map(app => compact ? `
       <article class="app-library-item">
         <a class="app-library-open" href="${attr(app.url)}" target="_blank" rel="noopener">${appIcon(app,'library-icon')}<span class="app-library-copy"><strong>${esc(app.name)}</strong><small>${esc(app.category || hostOf(app.url))}</small></span><span class="app-library-arrow">↗</span></a>
-        ${admin?`<div class="app-library-actions"><button title="Zum Dashboard" data-add-app-widget="${attr(app.id)}">＋</button><button title="Bearbeiten" data-edit-app="${attr(app.id)}">⋯</button></div>`:''}
+        ${admin?`<div class="app-library-actions">${grouped.has(String(app.id))?'<button title="Bereits in einer App-Gruppe" disabled>▦</button>':`<button title="Zum Dashboard" data-add-app-widget="${attr(app.id)}">＋</button>`}<button title="Bearbeiten" data-edit-app="${attr(app.id)}">⋯</button></div>`:''}
       </article>` : `
-      <article class="app-card"><div class="app-card-top">${appIcon(app)}<div class="app-card-copy"><div class="app-card-name">${esc(app.name)}</div>${app.category?`<div class="app-card-category">${esc(app.category)}</div>`:''}<div class="url-host">${esc(hostOf(app.url))}</div></div></div><div class="app-card-description">${esc(app.description||'Keine Beschreibung.')}</div><div class="app-card-actions"><a class="btn soft" href="${attr(app.url)}" target="_blank" rel="noopener">Öffnen ↗</a>${admin?`<button class="btn" data-add-app-widget="${attr(app.id)}">Dashboard</button><button class="btn" data-edit-app="${attr(app.id)}">Bearbeiten</button>`:''}</div></article>`).join('');
+      <article class="app-card"><div class="app-card-top">${appIcon(app)}<div class="app-card-copy"><div class="app-card-name">${esc(app.name)}</div>${app.category?`<div class="app-card-category">${esc(app.category)}</div>`:''}<div class="url-host">${esc(hostOf(app.url))}</div></div></div><div class="app-card-description">${esc(app.description||'Keine Beschreibung.')}</div><div class="app-card-actions"><a class="btn soft" href="${attr(app.url)}" target="_blank" rel="noopener">Öffnen ↗</a>${admin?`${grouped.has(String(app.id))?'<button class="btn" disabled>In Gruppe</button>':`<button class="btn" data-add-app-widget="${attr(app.id)}">Dashboard</button>`}<button class="btn" data-edit-app="${attr(app.id)}">Bearbeiten</button>`:''}</div></article>`).join('');
 
     appRoot.innerHTML = pageHead('Library','Apps','Viele Homelab-Dienste schnell finden, sauber gruppieren und mit einem Klick öffnen.',`<div class="view-switch"><button data-app-view="compact" class="${compact?'active':''}" title="Kompakt">▦</button><button data-app-view="cards" class="${!compact?'active':''}" title="Details">▤</button></div>${admin?'<button class="btn primary" id="addAppBtn">+ App</button>':''}`) +
       `<div class="section-card app-library-tools"><div class="search-field"><span>⌕</span><input id="appSearch" placeholder="App, Host oder Kategorie suchen…" value="${attr(state.appSearch)}"></div><div class="category-strip">${categoryButtons}</div></div>` +

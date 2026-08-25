@@ -17,6 +17,7 @@ It is built for people who want a fast overview, useful widgets and a setup that
 - **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE, Proxmox Backup Server, Zabbix, Docker and Portainer through PenguHub.
 - **Useful controls** – pause DNS protection or control selected Home Assistant entities right from the dashboard.
 - **Free 8 px canvas layout** – move and resize widgets freely on desktop or iPad with the same 8 px magnetic snap horizontally and vertically; nearby tiles temporarily make room while dragging.
+- **App groups** – drag one app onto another to create a compact iPhone/iPad-style folder and keep busy dashboards tidy.
 - **Private by design** – your data stays on your own server.
 
 ## Overview

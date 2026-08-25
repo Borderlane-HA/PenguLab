@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.8.0
+
+- Added iPhone/iPad-style App Groups to the dashboard. Drag an App widget onto another App and hold briefly to create a folder.
+- Added drag-to-folder support for adding more standalone App widgets to existing groups on desktop, iPad and iPhone.
+- Added compact folder previews with up to four app icons plus an overflow count.
+- Added an App Group overlay for launching grouped apps without leaving the dashboard.
+- Added App Group settings for renaming, sorting, adding apps, extracting apps back to the dashboard and dissolving a group.
+- Added a manual `+ Widget → App-Gruppe` flow for creating folders from the app library.
+- Prevented one dashboard app from simultaneously living in multiple folders or as a new standalone shortcut while grouped.
+- Existing 8 px canvas and smartphone layout behavior remains unchanged.
+
 ## 2.7.0
 
 - Replaced the coarse dashboard grid on desktop/iPad with a free canvas editor using an equal 8 px magnetic snap on both axes.

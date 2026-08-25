@@ -96,6 +96,12 @@ try {
             $db->pdo()->prepare('DELETE FROM widgets WHERE id = :id')->execute(['id' => $id]);
             json_response(['ok' => true, 'widgets' => $db->widgets()]);
 
+        case 'widgets/group':
+            require_method('POST');
+            require_admin($auth);
+            $result = manage_app_group($db, json_body());
+            json_response(['ok' => true] + $result + ['widgets' => $db->widgets()]);
+
         case 'widgets/layout':
             require_method('POST');
             require_admin($auth);
@@ -476,19 +482,196 @@ function delete_app(Database $db, string $id): void
     if ($id === '') return;
     $db->transaction(function($pdo) use ($id): void {
         $pdo->prepare('DELETE FROM apps WHERE id=:id')->execute(['id' => $id]);
+
+        // Remove standalone dashboard shortcuts for the deleted app.
         $rows = $pdo->query("SELECT id, config_json FROM widgets WHERE type='app'")->fetchAll();
         $del = $pdo->prepare('DELETE FROM widgets WHERE id=:id');
         foreach ($rows as $row) {
             $config = json_decode((string)$row['config_json'], true) ?: [];
             if (($config['app_id'] ?? '') === $id) $del->execute(['id' => $row['id']]);
         }
+
+        // Keep app folders healthy. A folder with one remaining app is converted
+        // back into a normal shortcut; an empty folder disappears.
+        $groups = $pdo->query("SELECT id, title, config_json FROM widgets WHERE type='app-group'")->fetchAll();
+        $update = $pdo->prepare('UPDATE widgets SET type=:type,title=:title,config_json=:config,updated_at=:updated WHERE id=:id');
+        foreach ($groups as $row) {
+            $config = json_decode((string)$row['config_json'], true) ?: [];
+            $ids = array_values(array_filter(array_map('strval', is_array($config['app_ids'] ?? null) ? $config['app_ids'] : []), fn($appId) => $appId !== $id));
+            if (count($ids) === 0) {
+                $del->execute(['id'=>$row['id']]);
+            } elseif (count($ids) === 1) {
+                $newConfig = array_intersect_key($config, array_flip(['mobile_order','mobile_size']));
+                $newConfig['app_id'] = $ids[0];
+                $newConfig['layout'] = 'vertical';
+                $update->execute(['type'=>'app','title'=>'','config'=>json_encode($newConfig, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>gmdate(DATE_ATOM),'id'=>$row['id']]);
+            } elseif (count($ids) !== count(is_array($config['app_ids'] ?? null) ? $config['app_ids'] : [])) {
+                $config['app_ids'] = $ids;
+                $update->execute(['type'=>'app-group','title'=>(string)($row['title'] ?? 'Apps'),'config'=>json_encode($config, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>gmdate(DATE_ATOM),'id'=>$row['id']]);
+            }
+        }
     });
+}
+
+function widget_by_id(Database $db, string $id): ?array
+{
+    foreach ($db->widgets() as $widget) if ((string)$widget['id'] === $id) return $widget;
+    return null;
+}
+
+function apps_by_ids(Database $db, array $ids): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('strval', $ids))));
+    if ($ids === []) return [];
+    $apps = [];
+    foreach ($db->apps() as $app) $apps[(string)$app['id']] = $app;
+    $out = [];
+    foreach ($ids as $id) if (isset($apps[$id])) $out[] = $apps[$id];
+    return $out;
+}
+
+function suggested_group_name(array $apps): string
+{
+    $categories = array_values(array_unique(array_filter(array_map(fn($a)=>trim((string)($a['category'] ?? '')), $apps))));
+    if (count($categories) === 1) return mb_substr($categories[0], 0, 100);
+    return 'Apps';
+}
+
+function group_config(array $appIds, array $base = []): array
+{
+    $keep = array_intersect_key($base, array_flip(['mobile_order','mobile_size']));
+    $keep['app_ids'] = array_values(array_slice(array_unique(array_filter(array_map('strval',$appIds))), 0, 64));
+    return $keep;
+}
+
+function app_group_owner(Database $db, string $appId, string $exceptGroupId = ''): ?string
+{
+    foreach ($db->widgets() as $widget) {
+        if (($widget['type'] ?? '') !== 'app-group' || (string)$widget['id'] === $exceptGroupId) continue;
+        $ids = is_array($widget['config']['app_ids'] ?? null) ? array_map('strval',$widget['config']['app_ids']) : [];
+        if (in_array($appId,$ids,true)) return (string)$widget['id'];
+    }
+    return null;
+}
+
+function manage_app_group(Database $db, array $input): array
+{
+    $action = trim((string)($input['action'] ?? ''));
+    $now = gmdate(DATE_ATOM);
+
+    if ($action === 'create_from_widgets') {
+        $source = widget_by_id($db, trim((string)($input['source_widget_id'] ?? '')));
+        $target = widget_by_id($db, trim((string)($input['target_widget_id'] ?? '')));
+        if (!$source || !$target || $source['id'] === $target['id'] || $source['type'] !== 'app' || $target['type'] !== 'app') {
+            throw new RuntimeException('Zum Erstellen einer Gruppe werden zwei App-Widgets benötigt.');
+        }
+        $sourceApp = trim((string)($source['config']['app_id'] ?? ''));
+        $targetApp = trim((string)($target['config']['app_id'] ?? ''));
+        if ($sourceApp === '' || $targetApp === '' || $sourceApp === $targetApp) throw new RuntimeException('Apps konnten nicht gruppiert werden.');
+        $apps = apps_by_ids($db, [$targetApp,$sourceApp]);
+        if (count($apps) !== 2) throw new RuntimeException('Eine der Apps wurde nicht gefunden.');
+        foreach ([$targetApp,$sourceApp] as $appId) if (app_group_owner($db,$appId) !== null) throw new RuntimeException('Eine der Apps ist bereits in einer anderen Gruppe.');
+        $title = mb_substr(trim(strip_tags((string)($input['title'] ?? ''))),0,100) ?: suggested_group_name($apps);
+        $config = group_config([$targetApp,$sourceApp], $target['config'] ?? []);
+        $db->transaction(function($pdo) use($source,$target,$title,$config,$now): void {
+            $pdo->prepare("UPDATE widgets SET type='app-group',title=:title,config_json=:config,updated_at=:updated WHERE id=:id")
+                ->execute(['title'=>$title,'config'=>json_encode($config,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>$now,'id'=>$target['id']]);
+            $pdo->prepare('DELETE FROM widgets WHERE id=:id')->execute(['id'=>$source['id']]);
+        });
+        return ['group_id'=>(string)$target['id']];
+    }
+
+    if ($action === 'add_widget') {
+        $source = widget_by_id($db, trim((string)($input['source_widget_id'] ?? '')));
+        $group = widget_by_id($db, trim((string)($input['group_widget_id'] ?? '')));
+        if (!$source || !$group || $source['type'] !== 'app' || $group['type'] !== 'app-group') throw new RuntimeException('App oder Gruppe wurde nicht gefunden.');
+        $appId = trim((string)($source['config']['app_id'] ?? ''));
+        $ids = is_array($group['config']['app_ids'] ?? null) ? array_map('strval',$group['config']['app_ids']) : [];
+        if ($appId === '' || !apps_by_ids($db,[$appId])) throw new RuntimeException('App wurde nicht gefunden.');
+        $owner=app_group_owner($db,$appId,(string)$group['id']);if($owner!==null)throw new RuntimeException('Diese App ist bereits in einer anderen Gruppe.');
+        if (!in_array($appId,$ids,true)) $ids[]=$appId;
+        $config = group_config($ids,$group['config'] ?? []);
+        $db->transaction(function($pdo) use($source,$group,$config,$now): void {
+            $pdo->prepare('UPDATE widgets SET config_json=:config,updated_at=:updated WHERE id=:id')->execute(['config'=>json_encode($config,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>$now,'id'=>$group['id']]);
+            $pdo->prepare('DELETE FROM widgets WHERE id=:id')->execute(['id'=>$source['id']]);
+        });
+        return ['group_id'=>(string)$group['id']];
+    }
+
+    if ($action === 'create_from_apps') {
+        $ids = array_values(array_slice(array_unique(array_filter(array_map('strval', is_array($input['app_ids'] ?? null) ? $input['app_ids'] : []))),0,64));
+        $apps = apps_by_ids($db,$ids);
+        if (count($apps) < 2) throw new RuntimeException('Wähle mindestens zwei Apps für eine Gruppe.');
+        $ids = array_map(fn($a)=>(string)$a['id'],$apps);
+        foreach ($ids as $appId) if (app_group_owner($db,$appId) !== null) throw new RuntimeException('Eine ausgewählte App ist bereits in einer anderen Gruppe.');
+        $title = mb_substr(trim(strip_tags((string)($input['title'] ?? ''))),0,100) ?: suggested_group_name($apps);
+        $standalone = [];
+        foreach ($db->widgets() as $w) if ($w['type']==='app' && in_array((string)($w['config']['app_id'] ?? ''),$ids,true)) $standalone[]=$w;
+        usort($standalone,fn($a,$b)=>($a['y']<=>$b['y'])?:($a['x']<=>$b['x']));
+        if ($standalone) {
+            $base=$standalone[0];$config=group_config($ids,$base['config']??[]);
+            $db->transaction(function($pdo) use($standalone,$base,$title,$config,$now): void {
+                $pdo->prepare("UPDATE widgets SET type='app-group',title=:title,config_json=:config,updated_at=:updated WHERE id=:id")
+                    ->execute(['title'=>$title,'config'=>json_encode($config,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>$now,'id'=>$base['id']]);
+                $del=$pdo->prepare('DELETE FROM widgets WHERE id=:id');
+                foreach(array_slice($standalone,1) as $w)$del->execute(['id'=>$w['id']]);
+            });
+            return ['group_id'=>(string)$base['id']];
+        }
+        $group=create_widget($db,null,['type'=>'app-group','title'=>$title,'config'=>group_config($ids),'w'=>18,'h'=>16]);
+        return ['group_id'=>(string)($group['id'] ?? '')];
+    }
+
+    if ($action === 'add_app') {
+        $group = widget_by_id($db, trim((string)($input['group_widget_id'] ?? '')));
+        $appId = trim((string)($input['app_id'] ?? ''));
+        if (!$group || $group['type'] !== 'app-group' || !apps_by_ids($db,[$appId])) throw new RuntimeException('App oder Gruppe wurde nicht gefunden.');
+        $owner=app_group_owner($db,$appId,(string)$group['id']);if($owner!==null)throw new RuntimeException('Diese App ist bereits in einer anderen Gruppe.');
+        $ids=is_array($group['config']['app_ids']??null)?array_map('strval',$group['config']['app_ids']):[];
+        if(!in_array($appId,$ids,true))$ids[]=$appId;
+        $config=group_config($ids,$group['config']??[]);
+        $db->transaction(function($pdo) use($group,$appId,$config,$now): void {
+            $rows=$pdo->query("SELECT id,config_json FROM widgets WHERE type='app'")->fetchAll();$del=$pdo->prepare('DELETE FROM widgets WHERE id=:id');
+            foreach($rows as $row){$c=json_decode((string)$row['config_json'],true)?:[];if((string)($c['app_id']??'')===$appId)$del->execute(['id'=>$row['id']]);}
+            $pdo->prepare('UPDATE widgets SET config_json=:config,updated_at=:updated WHERE id=:id')->execute(['config'=>json_encode($config,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>$now,'id'=>$group['id']]);
+        });
+        return ['group_id'=>(string)$group['id']];
+    }
+
+    if ($action === 'extract_app') {
+        $group = widget_by_id($db, trim((string)($input['group_widget_id'] ?? '')));
+        $appId = trim((string)($input['app_id'] ?? ''));
+        if (!$group || $group['type'] !== 'app-group') throw new RuntimeException('Gruppe wurde nicht gefunden.');
+        $ids=is_array($group['config']['app_ids']??null)?array_values(array_map('strval',$group['config']['app_ids'])):[];
+        if(!in_array($appId,$ids,true))throw new RuntimeException('App ist nicht in dieser Gruppe.');
+        $remaining=array_values(array_filter($ids,fn($id)=>$id!==$appId));
+        $db->transaction(function($pdo) use($group,$remaining,$now): void {
+            if(count($remaining)>=2){$config=group_config($remaining,$group['config']??[]);$pdo->prepare('UPDATE widgets SET config_json=:config,updated_at=:updated WHERE id=:id')->execute(['config'=>json_encode($config,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>$now,'id'=>$group['id']]);}
+            elseif(count($remaining)===1){$config=array_intersect_key($group['config']??[],array_flip(['mobile_order','mobile_size']));$config['app_id']=$remaining[0];$config['layout']='vertical';$pdo->prepare("UPDATE widgets SET type='app',title='',config_json=:config,updated_at=:updated WHERE id=:id")->execute(['config'=>json_encode($config,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>$now,'id'=>$group['id']]);}
+            else{$pdo->prepare('DELETE FROM widgets WHERE id=:id')->execute(['id'=>$group['id']]);}
+        });
+        $new=create_widget($db,null,['type'=>'app','config'=>['app_id'=>$appId,'layout'=>'vertical'],'w'=>11,'h'=>9]);
+        return ['widget_id'=>(string)($new['id']??'')];
+    }
+
+    if ($action === 'dissolve') {
+        $group = widget_by_id($db, trim((string)($input['group_widget_id'] ?? '')));
+        if (!$group || $group['type'] !== 'app-group') throw new RuntimeException('Gruppe wurde nicht gefunden.');
+        $ids=array_values(array_filter(array_map('strval',is_array($group['config']['app_ids']??null)?$group['config']['app_ids']:[])));
+        if(!$ids){$db->pdo()->prepare('DELETE FROM widgets WHERE id=:id')->execute(['id'=>$group['id']]);return [];}
+        $first=array_shift($ids);$config=array_intersect_key($group['config']??[],array_flip(['mobile_order','mobile_size']));$config['app_id']=$first;$config['layout']='vertical';
+        $db->pdo()->prepare("UPDATE widgets SET type='app',title='',config_json=:config,updated_at=:updated WHERE id=:id")->execute(['config'=>json_encode($config,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>$now,'id'=>$group['id']]);
+        foreach($ids as $appId)create_widget($db,null,['type'=>'app','config'=>['app_id'=>$appId,'layout'=>'vertical'],'w'=>11,'h'=>9]);
+        return [];
+    }
+
+    throw new RuntimeException('Unknown app group action.');
 }
 
 function create_widget(Database $db, $addons, array $input): array
 {
     $type = trim((string)($input['type'] ?? ''));
-    $allowed = ['app', 'clock', 'note'];
+    $allowed = ['app', 'app-group', 'clock', 'note'];
     if ($addons) {
         foreach ($addons->widgetCatalog() as $item) $allowed[] = (string)($item['type'] ?? '');
     }
@@ -497,15 +680,27 @@ function create_widget(Database $db, $addons, array $input): array
     $dashboard = $db->defaultDashboardId();
     $config = is_array($input['config'] ?? null) ? $input['config'] : [];
     $title = mb_substr(trim(strip_tags((string)($input['title'] ?? ''))), 0, 100);
+    if ($type === 'app') {
+        $appId = trim((string)($config['app_id'] ?? ''));
+        if ($appId === '' || !apps_by_ids($db,[$appId])) throw new RuntimeException('App wurde nicht gefunden.');
+        if (app_group_owner($db,$appId) !== null) throw new RuntimeException('Diese App liegt bereits in einer App-Gruppe. Löse sie dort zuerst heraus.');
+    }
+    if ($type === 'app-group') {
+        $ids = array_values(array_slice(array_unique(array_filter(array_map('strval', is_array($config['app_ids'] ?? null) ? $config['app_ids'] : []))),0,64));
+        if (count($ids) < 2 || count(apps_by_ids($db,$ids)) !== count($ids)) throw new RuntimeException('Eine App-Gruppe benötigt mindestens zwei gültige Apps.');
+        foreach ($ids as $appId) if (app_group_owner($db,$appId) !== null) throw new RuntimeException('Eine App ist bereits in einer anderen Gruppe.');
+        $config = group_config($ids,$config);
+        if ($title === '') $title = suggested_group_name(apps_by_ids($db,$ids));
+    }
     $canvas = $db->setting('layout_engine', 'legacy24') === 'canvas8';
     if ($canvas) {
-        $minW = in_array($type, ['app','homeassistant-entities'], true) ? 11 : 20;
-        $minH = in_array($type, ['app','homeassistant-entities'], true) ? 9 : 11;
+        $minW = in_array($type, ['app','app-group','homeassistant-entities'], true) ? 11 : 20;
+        $minH = in_array($type, ['app','app-group','homeassistant-entities'], true) ? 9 : 11;
         $w = max($minW, min(512, (int)($input['w'] ?? 42)));
         $h = max($minH, min(512, (int)($input['h'] ?? 26)));
         $x = max(0, min(512-$w, (int)($input['x'] ?? 0)));
     } else {
-        $minW = in_array($type, ['app','homeassistant-entities'], true) ? 2 : 4;
+        $minW = in_array($type, ['app','app-group','homeassistant-entities'], true) ? 2 : 4;
         $w = max($minW, min(24, (int)($input['w'] ?? 6)));
         $h = max(4, min(32, (int)($input['h'] ?? 8)));
         $x = max(0, min(24-$w, (int)($input['x'] ?? 0)));
@@ -531,6 +726,13 @@ function update_widget(Database $db, array $input): void
     if (!$existing) throw new RuntimeException('Widget not found.');
     $title = array_key_exists('title', $input) ? mb_substr(trim(strip_tags((string)$input['title'])), 0, 100) : $existing['title'];
     $config = is_array($input['config'] ?? null) ? $input['config'] : $existing['config'];
+    if (($existing['type'] ?? '') === 'app-group') {
+        $ids = array_values(array_slice(array_unique(array_filter(array_map('strval', is_array($config['app_ids'] ?? null) ? $config['app_ids'] : []))),0,64));
+        if (count($ids) < 2 || count(apps_by_ids($db,$ids)) !== count($ids)) throw new RuntimeException('Eine App-Gruppe benötigt mindestens zwei gültige Apps.');
+        foreach ($ids as $appId) if (app_group_owner($db,$appId,$id) !== null) throw new RuntimeException('Eine App ist bereits in einer anderen Gruppe.');
+        $config = group_config($ids,$config);
+        $title = $title !== '' ? $title : 'Apps';
+    }
     $stmt = $db->pdo()->prepare('UPDATE widgets SET title=:title, config_json=:config, updated_at=:updated WHERE id=:id');
     $stmt->execute(['title'=>$title,'config'=>json_encode($config, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated'=>gmdate(DATE_ATOM),'id'=>$id]);
     $db->pdo()->prepare('DELETE FROM widget_data_cache WHERE widget_id=:id')->execute(['id'=>$id]);
@@ -567,13 +769,13 @@ function save_layout(Database $db, mixed $items, string $engine = ''): void
 
         $canvas = $engine === 'canvas8' || ($engine === '' && $db->setting('layout_engine', 'legacy24') === 'canvas8');
         if ($canvas) {
-            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 11 : 20;
-            $minH = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 9 : 11;
+            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities'], true) ? 11 : 20;
+            $minH = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities'], true) ? 9 : 11;
             $w = max($minW, min(512, (int)($item['w'] ?? $layout[$id]['w'])));
             $h = max($minH, min(512, (int)($item['h'] ?? $layout[$id]['h'])));
             $x = max(0, min(512-$w, (int)($item['x'] ?? $layout[$id]['x'])));
         } else {
-            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 2 : 4;
+            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities'], true) ? 2 : 4;
             $w = max($minW, min(24, (int)($item['w'] ?? $layout[$id]['w'])));
             $h = max(4, min(32, (int)($item['h'] ?? $layout[$id]['h'])));
             $x = max(0, min(24-$w, (int)($item['x'] ?? $layout[$id]['x'])));
@@ -741,6 +943,9 @@ function widget_data(Database $db, $addons, $integrations, string $id, bool $cac
             $stmt = $db->pdo()->prepare('SELECT * FROM apps WHERE id=:id');
             $stmt->execute(['id' => (string)($config['app_id'] ?? '')]);
             return ['kind'=>'app','app'=>$stmt->fetch() ?: null];
+        case 'app-group':
+            $ids = is_array($config['app_ids'] ?? null) ? array_values(array_slice(array_unique(array_filter(array_map('strval',$config['app_ids']))),0,64)) : [];
+            return ['kind'=>'app-group','apps'=>apps_by_ids($db,$ids),'title'=>(string)($widget['title'] ?: 'Apps')];
         case 'clock':
             return ['kind'=>'clock','server_time'=>gmdate(DATE_ATOM)];
         case 'note':
@@ -897,11 +1102,11 @@ function import_data(array $ctx, mixed $data): void
                 $rawH=(int)($widget['h']??($importCanvas?26:($importGridScale===4?2:8)));
                 $rawY=(int)($widget['y']??0);
                 if ($importCanvas) {
-                    $minW=in_array($type,['app','homeassistant-entities'],true)?11:20;
-                    $minH=in_array($type,['app','homeassistant-entities'],true)?9:11;
+                    $minW=in_array($type,['app','app-group','homeassistant-entities'],true)?11:20;
+                    $minH=in_array($type,['app','app-group','homeassistant-entities'],true)?9:11;
                     $w=max($minW,min(512,$rawW));$h=max($minH,min(512,$rawH));$x=max(0,min(512-$w,$rawX));$y=max(0,$rawY);
                 } else {
-                    $minW=in_array($type,['app','homeassistant-entities'],true)?2:4;
+                    $minW=in_array($type,['app','app-group','homeassistant-entities'],true)?2:4;
                     $w=max($minW,min(24,$rawW*$importColumnScale));$h=max(4,min(32,$rawH*$importGridScale));$x=max(0,min(24-$w,$rawX*$importColumnScale));$y=max(0,$rawY*$importGridScale);
                 }
                 $title=mb_substr(trim(strip_tags((string)($widget['title']??''))),0,100);

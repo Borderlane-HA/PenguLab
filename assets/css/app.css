@@ -635,3 +635,53 @@ body{background:var(--shell-highlight),var(--bg)}
   .dashboard-grid.canvas-layout .widget{position:relative;left:auto;top:auto;width:100%;height:auto;grid-column:1!important;grid-row:auto!important}
   .editing .canvas-layout::before{display:none}
 }
+
+/* PenguLab 2.8: iOS-style app groups / folders */
+.widget-type-app-group .widget-head{display:none}
+.widget-type-app-group .widget-body{height:100%;padding:9px}
+.editing .widget-type-app-group .widget-head{display:flex;position:absolute;z-index:9;left:7px;right:7px;top:7px;height:30px;padding:0 6px;border-radius:10px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(8px);border:1px solid var(--border)}
+.editing .widget-type-app-group .widget-body{height:100%;padding:42px 9px 9px}
+.app-group-widget{width:100%;height:100%;border:0;background:transparent;color:var(--text);padding:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;text-align:center}
+.app-group-preview{position:relative;width:58px;height:58px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:4px;padding:6px;border-radius:17px;background:linear-gradient(145deg,var(--surface-2),var(--primary-soft));border:1px solid color-mix(in srgb,var(--primary) 13%,var(--border));box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 65%,transparent)}
+.app-group-mini-icon{position:relative;display:grid;place-items:center;min-width:0;min-height:0;border-radius:7px;overflow:hidden;background:var(--surface);border:1px solid color-mix(in srgb,var(--border) 72%,transparent);font-size:8px;font-weight:850;color:var(--primary)}
+.app-group-mini-icon img{width:100%;height:100%;object-fit:contain;padding:2px;position:relative;z-index:2;background:var(--surface)}
+.app-group-mini-icon>span{position:absolute;inset:0;display:grid;place-items:center}
+.app-group-count{position:absolute;right:-7px;bottom:-7px;min-width:22px;height:22px;padding:0 5px;border-radius:999px;background:var(--primary);color:#fff;border:2px solid var(--surface);display:grid;place-items:center;font-size:8px;font-weight:850;z-index:4}
+.app-group-name{max-width:100%;font-size:12px;font-weight:790;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-group-meta{font-size:8px;color:var(--muted)}
+.widget-type-app-group:hover .app-group-preview{border-color:color-mix(in srgb,var(--primary) 38%,var(--border));transform:translateY(-1px)}
+.app-group-preview{transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+
+.editing .widget.group-drop-target{border-color:color-mix(in srgb,var(--primary) 75%,var(--border))!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 14%,transparent),var(--shadow)!important}
+.editing .widget.group-drop-ready{border-style:solid!important;box-shadow:0 0 0 5px color-mix(in srgb,var(--primary) 20%,transparent),0 18px 46px color-mix(in srgb,var(--primary) 18%,transparent)!important}
+.editing .widget.group-drop-ready::after{content:"Gruppe";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;padding:6px 9px;border-radius:999px;background:var(--primary);color:#fff;font-size:9px;font-weight:850;box-shadow:0 8px 22px color-mix(in srgb,var(--primary) 30%,transparent);pointer-events:none}
+
+.app-folder-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:4px 0 8px}
+.app-folder-item{min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-radius:14px;border:1px solid transparent;text-align:center;transition:.14s ease}
+.app-folder-item:hover{background:var(--surface-2);border-color:var(--border)}
+.app-folder-item .app-group-mini-icon{width:48px;height:48px;border-radius:13px;font-size:12px}
+.app-folder-item strong{max-width:100%;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-folder-item small{max-width:100%;font-size:8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-group-pick-list{display:grid;grid-template-columns:1fr 1fr;gap:7px;max-height:360px;overflow:auto}
+.group-app-pick{min-width:0;display:grid;grid-template-columns:auto 35px 1fr;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);cursor:pointer}
+.group-app-pick .app-group-mini-icon{width:34px;height:34px;border-radius:9px}
+.group-app-pick strong,.group-app-pick small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.group-app-pick strong{font-size:10px}.group-app-pick small{font-size:8px;color:var(--muted);margin-top:2px}
+.app-group-editor-list{display:grid;gap:6px}
+.app-group-editor-row{display:grid;grid-template-columns:24px 35px minmax(0,1fr) 30px 30px 30px;align-items:center;gap:6px;padding:6px 7px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
+.app-group-editor-row.sorting{opacity:.45}.app-group-editor-row .app-group-mini-icon{width:34px;height:34px;border-radius:9px}.group-sort-handle{cursor:grab;color:var(--soft);font-size:15px;text-align:center}.app-group-editor-copy{min-width:0}.app-group-editor-copy strong,.app-group-editor-copy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.app-group-editor-copy strong{font-size:10px}.app-group-editor-copy small{font-size:8px;color:var(--muted);margin-top:2px}
+.group-add-row{display:grid;grid-template-columns:1fr auto;gap:8px}.group-add-row select{min-width:0}
+
+@media(max-width:760px){
+  .app-folder-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .app-group-pick-list{grid-template-columns:1fr}
+  .app-group-editor-row{grid-template-columns:20px 32px minmax(0,1fr) 34px 34px 34px;gap:4px;padding:6px 5px}
+  .app-group-editor-row .widget-mini-btn{width:34px;height:34px!important}
+  .widget-type-app-group{min-height:110px!important}
+  .widget-type-app-group .app-group-preview{width:54px;height:54px}
+}
+.widget-type-app-group.app-group-sm .app-group-preview{width:42px;height:42px;border-radius:13px;gap:3px;padding:4px}
+.widget-type-app-group.app-group-sm .app-group-name{font-size:10px}
+.widget-type-app-group.app-group-sm .app-group-meta{display:none}
+.widget-type-app-group.app-group-sm .app-group-widget{gap:3px;padding:1px}
+.widget-type-app-group.app-group-lg .app-group-preview{width:68px;height:68px;border-radius:19px;gap:5px;padding:7px}
+.widget-type-app-group.app-group-lg .app-group-name{font-size:13px}
