@@ -99,8 +99,9 @@ try {
         case 'widgets/layout':
             require_method('POST');
             require_admin($auth);
-            save_layout($db, json_body()['widgets'] ?? []);
-            json_response(['ok' => true, 'widgets' => $db->widgets()]);
+            $body=json_body();
+            save_layout($db, $body['widgets'] ?? [], (string)($body['engine'] ?? ''));
+            json_response(['ok' => true, 'widgets' => $db->widgets(), 'settings'=>settings_payload($db)]);
 
         case 'widgets/data':
             require_method('GET');
@@ -367,6 +368,7 @@ function settings_payload(Database $db): array
         'theme' => $db->setting('theme', 'system'),
         'language' => $db->setting('language', 'de'),
         'dashboard_title' => $db->setting('dashboard_title', 'My Homelab'),
+        'layout_engine' => $db->setting('layout_engine', 'legacy24'),
     ];
 }
 
@@ -495,10 +497,19 @@ function create_widget(Database $db, $addons, array $input): array
     $dashboard = $db->defaultDashboardId();
     $config = is_array($input['config'] ?? null) ? $input['config'] : [];
     $title = mb_substr(trim(strip_tags((string)($input['title'] ?? ''))), 0, 100);
-    $minW = in_array($type, ['app','homeassistant-entities'], true) ? 2 : 4;
-    $w = max($minW, min(24, (int)($input['w'] ?? 6)));
-    $h = max(4, min(32, (int)($input['h'] ?? 8)));
-    $x = max(0, min(24-$w, (int)($input['x'] ?? 0)));
+    $canvas = $db->setting('layout_engine', 'legacy24') === 'canvas8';
+    if ($canvas) {
+        $minW = in_array($type, ['app','homeassistant-entities'], true) ? 11 : 20;
+        $minH = in_array($type, ['app','homeassistant-entities'], true) ? 9 : 11;
+        $w = max($minW, min(512, (int)($input['w'] ?? 42)));
+        $h = max($minH, min(512, (int)($input['h'] ?? 26)));
+        $x = max(0, min(512-$w, (int)($input['x'] ?? 0)));
+    } else {
+        $minW = in_array($type, ['app','homeassistant-entities'], true) ? 2 : 4;
+        $w = max($minW, min(24, (int)($input['w'] ?? 6)));
+        $h = max(4, min(32, (int)($input['h'] ?? 8)));
+        $x = max(0, min(24-$w, (int)($input['x'] ?? 0)));
+    }
     $maxY = (int)$db->pdo()->query('SELECT COALESCE(MAX(y+h),0) FROM widgets')->fetchColumn();
     $y = max(0, (int)($input['y'] ?? $maxY));
     $now = gmdate(DATE_ATOM);
@@ -525,7 +536,7 @@ function update_widget(Database $db, array $input): void
     $db->pdo()->prepare('DELETE FROM widget_data_cache WHERE widget_id=:id')->execute(['id'=>$id]);
 }
 
-function save_layout(Database $db, mixed $items): void
+function save_layout(Database $db, mixed $items, string $engine = ''): void
 {
     if (!is_array($items)) throw new RuntimeException('Invalid dashboard layout.');
 
@@ -554,10 +565,19 @@ function save_layout(Database $db, mixed $items): void
         if (isset($seen[$id])) throw new RuntimeException('Dashboard contains a duplicate widget.');
         $seen[$id] = true;
 
-        $minW = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 2 : 4;
-        $w = max($minW, min(24, (int)($item['w'] ?? $layout[$id]['w'])));
-        $h = max(4, min(32, (int)($item['h'] ?? $layout[$id]['h'])));
-        $x = max(0, min(24-$w, (int)($item['x'] ?? $layout[$id]['x'])));
+        $canvas = $engine === 'canvas8' || ($engine === '' && $db->setting('layout_engine', 'legacy24') === 'canvas8');
+        if ($canvas) {
+            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 11 : 20;
+            $minH = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 9 : 11;
+            $w = max($minW, min(512, (int)($item['w'] ?? $layout[$id]['w'])));
+            $h = max($minH, min(512, (int)($item['h'] ?? $layout[$id]['h'])));
+            $x = max(0, min(512-$w, (int)($item['x'] ?? $layout[$id]['x'])));
+        } else {
+            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 2 : 4;
+            $w = max($minW, min(24, (int)($item['w'] ?? $layout[$id]['w'])));
+            $h = max(4, min(32, (int)($item['h'] ?? $layout[$id]['h'])));
+            $x = max(0, min(24-$w, (int)($item['x'] ?? $layout[$id]['x'])));
+        }
         $y = max(0, (int)($item['y'] ?? $layout[$id]['y']));
         $layout[$id] = array_merge($layout[$id], ['x'=>$x,'y'=>$y,'w'=>$w,'h'=>$h]);
     }
@@ -597,6 +617,7 @@ function save_layout(Database $db, mixed $items): void
             ]);
         }
     });
+    if ($engine === 'canvas8' || $engine === 'legacy24') $db->setSetting('layout_engine', $engine);
 }
 
 function integration_cache_payload(Database $db, string $integrationId, string $type): array
@@ -838,6 +859,7 @@ function import_data(array $ctx, mixed $data): void
     $normalizedImportVersion = preg_replace('/[^0-9.].*$/', '', $importVersion) ?: '0.0.0';
     $importGridScale = ($importVersion !== '' && version_compare($normalizedImportVersion, '2.6.0', '>=')) ? 1 : 4;
     $importColumnScale = ($importVersion !== '' && version_compare($normalizedImportVersion, '2.6.1', '>=')) ? 1 : 2;
+    $importCanvasGlobal = (($data['settings']['layout_engine'] ?? '') === 'canvas8') || ($importVersion !== '' && version_compare($normalizedImportVersion, '2.7.0', '>='));
 
     foreach (($data['enabled_addons'] ?? []) as $addonId) {
         $addonId = trim((string)$addonId);
@@ -849,12 +871,13 @@ function import_data(array $ctx, mixed $data): void
         $addons->install('ipmanager');
     }
 
-    $db->transaction(function($pdo) use ($data,$db,$importGridScale,$importColumnScale): void {
+    $db->transaction(function($pdo) use ($data,$db,$importGridScale,$importColumnScale,$importVersion,$normalizedImportVersion,$importCanvasGlobal): void {
         if (is_array($data['settings'] ?? null)) {
-            foreach (['theme','language','sidebar_compact','dashboard_title'] as $key) {
+            foreach (['theme','language','sidebar_compact','dashboard_title','layout_engine'] as $key) {
                 if (array_key_exists($key, $data['settings'])) $db->setSetting($key, $data['settings'][$key]);
             }
         }
+        $db->setSetting('layout_engine', $importCanvasGlobal ? 'canvas8' : 'legacy24');
 
         if (is_array($data['apps'] ?? null)) {
             $pdo->exec('DELETE FROM apps');
@@ -868,15 +891,19 @@ function import_data(array $ctx, mixed $data): void
                 $id = trim((string)($widget['id'] ?? '')) ?: Database::uuid('widget');
                 $now=gmdate(DATE_ATOM);
                 $type=(string)($widget['type']??'');
-                $minW=in_array($type,['app','homeassistant-entities'],true)?2:4;
-                $rawW=(int)($widget['w']??($importColumnScale===2?3:6));
+                $importCanvas = $importCanvasGlobal;
+                $rawW=(int)($widget['w']??($importCanvas?42:($importColumnScale===2?3:6)));
                 $rawX=(int)($widget['x']??0);
-                $w=max($minW,min(24,$rawW*$importColumnScale));
-                $rawH=(int)($widget['h']??($importGridScale===4?2:8));
+                $rawH=(int)($widget['h']??($importCanvas?26:($importGridScale===4?2:8)));
                 $rawY=(int)($widget['y']??0);
-                $h=max(4,min(32,$rawH*$importGridScale));
-                $x=max(0,min(24-$w,$rawX*$importColumnScale));
-                $y=max(0,$rawY*$importGridScale);
+                if ($importCanvas) {
+                    $minW=in_array($type,['app','homeassistant-entities'],true)?11:20;
+                    $minH=in_array($type,['app','homeassistant-entities'],true)?9:11;
+                    $w=max($minW,min(512,$rawW));$h=max($minH,min(512,$rawH));$x=max(0,min(512-$w,$rawX));$y=max(0,$rawY);
+                } else {
+                    $minW=in_array($type,['app','homeassistant-entities'],true)?2:4;
+                    $w=max($minW,min(24,$rawW*$importColumnScale));$h=max(4,min(32,$rawH*$importGridScale));$x=max(0,min(24-$w,$rawX*$importColumnScale));$y=max(0,$rawY*$importGridScale);
+                }
                 $title=mb_substr(trim(strip_tags((string)($widget['title']??''))),0,100);
                 $config=is_array($widget['config']??null)?$widget['config']:[];
                 $stmt=$pdo->prepare('INSERT INTO widgets(id,dashboard_id,type,title,x,y,w,h,config_json,created_at,updated_at) VALUES(:id,:dashboard,:type,:title,:x,:y,:w,:h,:config,:created,:updated)');

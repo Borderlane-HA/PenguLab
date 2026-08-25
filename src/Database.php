@@ -294,6 +294,13 @@ SQL;
                 $this->setSetting($key, $value);
             }
         }
+        // New/empty installations start directly on the 8px canvas. Existing
+        // dashboards stay on the legacy grid until the browser can measure and
+        // migrate their real pixel geometry without changing the visible layout.
+        if ($this->setting('layout_engine', '__missing__') === '__missing__') {
+            $count = (int)$this->pdo->query('SELECT COUNT(*) FROM widgets')->fetchColumn();
+            $this->setSetting('layout_engine', $count === 0 ? 'canvas8' : 'legacy24');
+        }
         $this->defaultDashboardId();
     }
 

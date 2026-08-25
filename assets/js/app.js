@@ -9,6 +9,7 @@
     view: 'dashboard',
     editMode: false,
     layoutOriginal: null,
+    layoutOriginalEngine: null,
     layoutDirty: false,
     appSearch: '',
     appCategory: 'all',
@@ -16,6 +17,7 @@
     widgetRefreshTimers: new Map(),
     widgetInFlight: new Map(),
     metricHistory: new Map(),
+    canvasMigrationInFlight: false,
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -125,7 +127,10 @@
   const cloneConfig = value => JSON.parse(JSON.stringify(value || {}));
   const isPhoneEditor = () => matchMedia('(max-width:760px)').matches;
   const GRID_COLS = 24, GRID_SCALE = 4, GRID_MIN_H = 4, GRID_MAX_H = 32;
-  const mobileOrderOf = widget => Number.isFinite(Number(widget?.config?.mobile_order)) ? Number(widget.config.mobile_order) : ((Number(widget?.y)||0)*GRID_COLS + (Number(widget?.x)||0));
+  const CANVAS_SNAP = 8, CANVAS_MAX_UNITS = 512;
+  const isCanvasLayout = () => state.boot?.settings?.layout_engine === 'canvas8';
+  const snapUnit = px => Math.max(0, Math.round(Number(px || 0) / CANVAS_SNAP));
+  const mobileOrderOf = widget => Number.isFinite(Number(widget?.config?.mobile_order)) ? Number(widget.config.mobile_order) : ((Number(widget?.y)||0)*(isCanvasLayout()?1024:GRID_COLS) + (Number(widget?.x)||0));
 
   function layoutSnapshot() {
     const out = {};
@@ -135,9 +140,26 @@
 
   function beginLayoutEdit() {
     state.layoutOriginal = layoutSnapshot();
+    state.layoutOriginalEngine = state.boot?.settings?.layout_engine || 'legacy24';
     state.layoutDirty = false;
+    if (!isPhoneEditor() && !isCanvasLayout()) migrateRenderedLayoutToCanvas();
     state.editMode = true;
     renderDashboard();
+  }
+
+  function migrateRenderedLayoutToCanvas() {
+    const grid=$('#dashboardGrid'); if(!grid) return;
+    const gridRect=grid.getBoundingClientRect();
+    for(const widget of state.boot?.widgets||[]){
+      const el=grid.querySelector(`[data-widget-id="${CSS.escape(widget.id)}"]`); if(!el) continue;
+      const r=el.getBoundingClientRect();
+      widget.x=snapUnit(r.left-gridRect.left);
+      widget.y=snapUnit(r.top-gridRect.top);
+      widget.w=Math.max(canvasMinW(widget),snapUnit(r.width));
+      widget.h=Math.max(canvasMinH(widget),snapUnit(r.height));
+    }
+    state.boot.settings={...(state.boot.settings||{}),layout_engine:'canvas8'};
+    state.layoutDirty=true;
   }
 
   function discardLayoutEdit({renderAfter=true} = {}) {
@@ -147,7 +169,9 @@
         if (original) { Object.assign(widget, {x:original.x,y:original.y,w:original.w,h:original.h}); widget.config=cloneConfig(original.config); }
       }
     }
+    if(state.boot?.settings && state.layoutOriginalEngine) state.boot.settings.layout_engine=state.layoutOriginalEngine;
     state.layoutOriginal = null;
+    state.layoutOriginalEngine = null;
     state.layoutDirty = false;
     state.editMode = false;
     if (renderAfter) renderDashboard();
@@ -158,9 +182,10 @@
     if (!state.layoutDirty) { discardLayoutEdit(); return; }
     const button=$('#saveLayoutBtn');if(button){button.disabled=true;button.textContent='Speichert…';}
     try {
-      const d=await api('widgets/layout',{body:{widgets:(state.boot.widgets||[]).map(({id,x,y,w,h,config})=>({id,x,y,w,h,config:cloneConfig(config)}))}});
+      const d=await api('widgets/layout',{body:{engine:isCanvasLayout()?'canvas8':'legacy24',widgets:(state.boot.widgets||[]).map(({id,x,y,w,h,config})=>({id,x,y,w,h,config:cloneConfig(config)}))}});
+      if(d.settings)state.boot.settings=d.settings;
       state.boot.widgets=d.widgets;
-      state.layoutOriginal=null;state.layoutDirty=false;state.editMode=false;
+      state.layoutOriginal=null;state.layoutOriginalEngine=null;state.layoutDirty=false;state.editMode=false;
       renderDashboard();toast('Dashboard-Layout gespeichert.');
     } catch(e) {
       if(button){button.disabled=false;button.textContent='Speichern';}
@@ -177,9 +202,9 @@
     const dashboardActions=isAdmin()?(state.editMode
       ? `<button class="btn" id="cancelLayoutBtn">Abbrechen</button><button class="btn primary" id="saveLayoutBtn">Speichern</button>`
       : `<button class="btn" id="editLayoutBtn">Layout bearbeiten</button><button class="btn primary" id="addWidgetBtn">+ Widget</button>`):'';
-    const editHint=state.editMode?(isPhoneEditor()?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel halten und vertikal verschieben. Größe über ↕ ändern.':'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel an beliebiger Stelle anfassen und ziehen. Andere Kacheln machen automatisch Platz.'):'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
+    const editHint=state.editMode?(isPhoneEditor()?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel halten und vertikal verschieben. Größe über ↕ ändern.':'<span class="edit-mode-pill">Bearbeitungsmodus</span> Frei verschieben und skalieren · 8 px Snap horizontal & vertikal. Andere Kacheln machen automatisch Platz.'):'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
     appRoot.innerHTML = pageHead('Control Center', title, 'Apps, Services und Homelab-Status an einem Ort.', dashboardActions) + (isAdmin()?`<div class="dashboard-toolbar"><span class="edit-hint">${state.editMode?editHint:esc(editHint)}</span></div>`:'') +
-    `<div class="dashboard-grid" id="dashboardGrid">${widgets.length ? widgets.map(widgetShell).join('') : `<div class="empty-dashboard"><h3>Dein Dashboard ist bereit</h3><p>${isAdmin()?'Füge Apps, Statuskarten, RSS oder Add-on-Widgets hinzu.':'Für deinen Benutzer sind noch keine Dashboard-Widgets freigegeben.'}</p>${isAdmin()?'<button class="btn primary" id="emptyAddWidget">+ Erstes Widget</button>':''}</div>`}</div>`;
+    `<div class="dashboard-grid ${isCanvasLayout()?'canvas-layout':''}" id="dashboardGrid" style="${isCanvasLayout()?`--canvas-height:${canvasHeightPx(widgets)}px`:''}">${widgets.length ? widgets.map(widgetShell).join('') : `<div class="empty-dashboard"><h3>Dein Dashboard ist bereit</h3><p>${isAdmin()?'Füge Apps, Statuskarten, RSS oder Add-on-Widgets hinzu.':'Für deinen Benutzer sind noch keine Dashboard-Widgets freigegeben.'}</p>${isAdmin()?'<button class="btn primary" id="emptyAddWidget">+ Erstes Widget</button>':''}</div>`}</div>`;
 
     $('#editLayoutBtn')?.addEventListener('click', beginLayoutEdit);
     $('#cancelLayoutBtn')?.addEventListener('click', ()=>discardLayoutEdit());
@@ -203,9 +228,10 @@
   function widgetShell(widget) {
     const title = widget.title || widgetTitle(widget);
     const typeClass = `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
-    const sizeClass = widget.type === 'app' ? (widget.w <= 2 ? 'app-widget-xs' : widget.w <= 4 ? 'app-widget-sm' : 'app-widget-lg') : '';
+    const visualWidth = isCanvasLayout() ? (Number(widget.w)||0)*CANVAS_SNAP : (Number(widget.w)||0)*56;
+    const sizeClass = widget.type === 'app' ? (visualWidth < 150 ? 'app-widget-xs' : visualWidth < 260 ? 'app-widget-sm' : 'app-widget-lg') : '';
     const haCount = widget.type === 'homeassistant-entities' ? (Array.isArray(widget.config?.entity_ids) ? widget.config.entity_ids.length : 0) : 0;
-    const haSizeClass = widget.type === 'homeassistant-entities' ? `${haCount===1?'ha-widget-single ':''}${widget.w<=2?'ha-widget-xs ':''}${haCount>=4||widget.w<=4?'ha-widget-dense':''}`.trim() : '';
+    const haSizeClass = widget.type === 'homeassistant-entities' ? `${haCount===1?'ha-widget-single ':''}${visualWidth<150?'ha-widget-xs ':''}${haCount>=4||visualWidth<280?'ha-widget-dense':''}`.trim() : '';
     const settingsButton = isAdmin() && ['app','homeassistant-entities','integration-summary'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
     const mobileSize = ['small','medium','large'].includes(String(widget.config?.mobile_size||'')) ? String(widget.config.mobile_size) : 'auto';
     const phoneSizeButton = isAdmin() ? `<button class="widget-mini-btn widget-mobile-size" data-id="${attr(widget.id)}" title="Größe auf Mobilgeräten">↕</button>` : '';
@@ -217,7 +243,7 @@
     const autoCompactHeadTypes = ['homeassistant-entities','integration-summary','clock'];
     const hideHead = autoCompactHeadTypes.includes(widget.type) && !hasCustomTitle && !state.editMode;
     const head = hideHead ? '' : `<div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${phoneSizeButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>`;
-    return `<section class="widget ${typeClass} ${sizeClass} ${haSizeClass} mobile-size-${mobileSize} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||8};--mobile-order:${mobileOrderOf(widget)}">
+    return `<section class="widget ${typeClass} ${sizeClass} ${haSizeClass} mobile-size-${mobileSize} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||8};--cx:${Number(widget.x)||0};--cy:${Number(widget.y)||0};--cw:${Number(widget.w)||3};--ch:${Number(widget.h)||8};--mobile-order:${mobileOrderOf(widget)}">
       ${head}
       <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
     </section>`;
@@ -597,74 +623,66 @@
     window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
 
+  function canvasMinW(widget){ return widget?.type==='app'||widget?.type==='homeassistant-entities' ? 11 : 20; }
+  function canvasMinH(widget){ return widget?.type==='app'||widget?.type==='homeassistant-entities' ? 9 : 11; }
+  function canvasCols(grid){ return Math.max(1,Math.floor(grid.getBoundingClientRect().width/CANVAS_SNAP)); }
+  function canvasHeightPx(widgets){
+    if(!isCanvasLayout()) return 240;
+    const bottom=(widgets||[]).reduce((m,w)=>Math.max(m,(Number(w.y)||0)+(Number(w.h)||0)),0);
+    return Math.max(240,bottom*CANVAS_SNAP+16);
+  }
+  function updateCanvasHeight(grid,widgets){if(isCanvasLayout()&&grid)grid.style.setProperty('--canvas-height',`${canvasHeightPx(widgets)}px`);}
   function gridMetrics(grid) {
+    if(isCanvasLayout()) return {rect:grid.getBoundingClientRect(),gap:0,col:CANVAS_SNAP,row:CANVAS_SNAP,unitY:CANVAS_SNAP,cols:canvasCols(grid)};
     const style = getComputedStyle(grid); const gap = parseFloat(style.columnGap) || 16; const row = parseFloat(style.gridAutoRows) || 9.5; const rect = grid.getBoundingClientRect();
-    return { rect, gap, col: (rect.width - gap * (GRID_COLS - 1)) / GRID_COLS, row, unitY: row + gap };
+    return { rect, gap, col: (rect.width - gap * (GRID_COLS - 1)) / GRID_COLS, row, unitY: row + gap, cols:GRID_COLS };
   }
   const intersects = (a,b) => a.id !== b.id && a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
-  function positionFree(candidate, widgets, ignoreId) { return !widgets.some(w => w.id !== ignoreId && intersects(candidate,w)); }
-  function setWidgetStyle(el,w){el.style.setProperty('--x',w.x);el.style.setProperty('--y',w.y);el.style.setProperty('--w',w.w);el.style.setProperty('--h',w.h);el.style.setProperty('--mobile-order',mobileOrderOf(w));if(isPhoneEditor())el.style.order=String(mobileOrderOf(w));}
-  function markLayoutDirty(){state.layoutDirty=true;const btn=$('#saveLayoutBtn');if(btn)btn.disabled=false;}
-  function positionSnapshot(widgets){
-    const out={}; for(const w of widgets||[]) out[w.id]={id:w.id,x:w.x,y:w.y,w:w.w,h:w.h}; return out;
+  function setWidgetStyle(el,w){
+    el.style.setProperty('--x',w.x);el.style.setProperty('--y',w.y);el.style.setProperty('--w',w.w);el.style.setProperty('--h',w.h);
+    el.style.setProperty('--cx',w.x);el.style.setProperty('--cy',w.y);el.style.setProperty('--cw',w.w);el.style.setProperty('--ch',w.h);
+    el.style.setProperty('--mobile-order',mobileOrderOf(w));if(isPhoneEditor())el.style.order=String(mobileOrderOf(w));
   }
+  function markLayoutDirty(){state.layoutDirty=true;const btn=$('#saveLayoutBtn');if(btn)btn.disabled=false;}
+  function positionSnapshot(widgets){const out={};for(const w of widgets||[])out[w.id]={id:w.id,x:w.x,y:w.y,w:w.w,h:w.h};return out;}
   function applyPositionMap(map, widgets, grid){
     for(const w of widgets||[]){const pos=map[w.id];if(!pos)continue;Object.assign(w,{x:pos.x,y:pos.y,w:pos.w,h:pos.h});const el=grid.querySelector(`[data-widget-id="${CSS.escape(w.id)}"]`);if(el)setWidgetStyle(el,w);}
+    updateCanvasHeight(grid,widgets);
   }
   function overlapsAny(pos, occupied){return occupied.some(o=>intersects(pos,o));}
-  function nearestSlot(source, occupied){
-    const maxX=Math.max(0,GRID_COLS-source.w);
+  function nearestSlot(source,occupied,maxCols){
+    const maxX=Math.max(0,maxCols-source.w);
     const xs=Array.from({length:maxX+1},(_,x)=>x).sort((a,b)=>Math.abs(a-source.x)-Math.abs(b-source.x));
-    for(let dy=0;dy<160;dy++){
+    for(let dy=0;dy<400;dy++){
       const y=Math.max(0,source.y+dy);
       for(const x of xs){const c={...source,x,y};if(!overlapsAny(c,occupied))return c;}
     }
-    return {...source,x:0,y:Math.max(0,source.y+160)};
+    return {...source,x:0,y:Math.max(0,source.y+400)};
   }
-  function reflowPreview(dragId, candidate, base, widgets){
-    const result={};
-    const dragged={...base[dragId],...candidate,id:dragId}; result[dragId]=dragged;
-    const occupied=[dragged];
+  function reflowPreview(dragId,candidate,base,widgets,maxCols){
+    const result={};const dragged={...base[dragId],...candidate,id:dragId};result[dragId]=dragged;const occupied=[dragged];
     const others=(widgets||[]).filter(w=>w.id!==dragId).map(w=>({...base[w.id]})).sort((a,b)=>a.y-b.y||a.x-b.x);
-    for(const original of others){
-      let placed={...original};
-      if(overlapsAny(placed,occupied)) placed=nearestSlot(original,occupied);
-      result[original.id]=placed; occupied.push(placed);
-    }
-    return result;
+    for(const original of others){let placed={...original};if(overlapsAny(placed,occupied))placed=nearestSlot(original,occupied,maxCols);result[original.id]=placed;occupied.push(placed);}return result;
   }
-  function layoutChangedFrom(base, widgets){
-    return (widgets||[]).some(w=>{const b=base[w.id];return !b||w.x!==b.x||w.y!==b.y||w.w!==b.w||w.h!==b.h;});
-  }
-  function startDrag(ev, el, widget, grid) {
-    ev.preventDefault(); ev.stopPropagation(); el.setPointerCapture?.(ev.pointerId); el.classList.add('dragging'); grid.classList.add('grid-reflowing');
+  function layoutChangedFrom(base,widgets){return (widgets||[]).some(w=>{const b=base[w.id];return !b||w.x!==b.x||w.y!==b.y||w.w!==b.w||w.h!==b.h;});}
+  function startDrag(ev,el,widget,grid){
+    ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
     const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]};
-    const move=e=>{
-      e.preventDefault?.();
-      const dx=Math.round((e.clientX-sx)/(m.col+m.gap));const dy=Math.round((e.clientY-sy)/m.unitY);
-      const candidate={...original,x:Math.max(0,Math.min(GRID_COLS-widget.w,original.x+dx)),y:Math.max(0,original.y+dy)};
-      applyPositionMap(reflowPreview(widget.id,candidate,base,widgets),widgets,grid);
-    };
-    const up=e=>{
-      el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);
-      if(layoutChangedFrom(base,widgets))markLayoutDirty();
-    };
+    const move=e=>{e.preventDefault?.();const dx=Math.round((e.clientX-sx)/m.col);const dy=Math.round((e.clientY-sy)/m.unitY);const maxCols=m.cols||GRID_COLS;const candidate={...original,x:Math.max(0,Math.min(maxCols-widget.w,original.x+dx)),y:Math.max(0,original.y+dy)};applyPositionMap(reflowPreview(widget.id,candidate,base,widgets,maxCols),widgets,grid);};
+    const up=()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(layoutChangedFrom(base,widgets))markLayoutDirty();};
     window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
-  function startResize(ev, el, widget, grid) {
+  function startResize(ev,el,widget,grid){
     ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
     const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]};
     const move=e=>{
-      e.preventDefault?.();
-      const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);const minW=widget.type==='app'||widget.type==='homeassistant-entities'?2:4;
-      const candidate={...original,w:Math.max(minW,Math.min(GRID_COLS-original.x,original.w+dw)),h:Math.max(GRID_MIN_H,Math.min(GRID_MAX_H,original.h+dh))};
-      applyPositionMap(reflowPreview(widget.id,candidate,base,widgets),widgets,grid);
-      el.classList.toggle('app-widget-xs',widget.type==='app'&&widget.w<=2);el.classList.toggle('app-widget-sm',widget.type==='app'&&widget.w>2&&widget.w<=4);el.classList.toggle('app-widget-lg',widget.type==='app'&&widget.w>=5);
+      e.preventDefault?.();const dw=Math.round((e.clientX-sx)/m.col);const dh=Math.round((e.clientY-sy)/m.unitY);const maxCols=m.cols||GRID_COLS;
+      const minW=isCanvasLayout()?canvasMinW(widget):(widget.type==='app'||widget.type==='homeassistant-entities'?2:4);const minH=isCanvasLayout()?canvasMinH(widget):GRID_MIN_H;const maxH=isCanvasLayout()?CANVAS_MAX_UNITS:GRID_MAX_H;
+      const candidate={...original,w:Math.max(minW,Math.min(maxCols-original.x,original.w+dw)),h:Math.max(minH,Math.min(maxH,original.h+dh))};
+      applyPositionMap(reflowPreview(widget.id,candidate,base,widgets,maxCols),widgets,grid);
+      const pxWidth=isCanvasLayout()?widget.w*CANVAS_SNAP:widget.w;el.classList.toggle('app-widget-xs',widget.type==='app'&&pxWidth<150);el.classList.toggle('app-widget-sm',widget.type==='app'&&pxWidth>=150&&pxWidth<260);el.classList.toggle('app-widget-lg',widget.type==='app'&&pxWidth>=260);
     };
-    const up=()=>{
-      el.classList.remove('dragging');grid.classList.remove('grid-reflowing');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);
-      if(layoutChangedFrom(base,widgets)){markLayoutDirty();loadOneWidget(widget,true);}
-    };
+    const up=()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(layoutChangedFrom(base,widgets)){markLayoutDirty();loadOneWidget(widget,true);}};
     window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
 
@@ -724,7 +742,15 @@
     }
   }
 
-  async function createWidget(payload){try{const d=await api('widgets/create',{body:payload});state.boot.widgets=d.widgets;if(state.view==='dashboard')renderDashboard();else render();toast('Widget hinzugefügt.');}catch(e){toast(e.message,'error')}}
+  async function createWidget(payload){
+    try{
+      if(isCanvasLayout()){
+        const oldW=Math.max(1,Number(payload.w)||6),oldH=Math.max(1,Number(payload.h)||8);
+        payload={...payload,config:{...(payload.config||{}),layout_engine:'canvas8'},w:Math.max(payload.type==='app'||payload.type==='homeassistant-entities'?11:20,Math.round(oldW*7)),h:Math.max(payload.type==='app'||payload.type==='homeassistant-entities'?9:11,Math.round(oldH*3.2))};
+      }
+      const d=await api('widgets/create',{body:payload});state.boot.widgets=d.widgets;if(state.view==='dashboard')renderDashboard();else render();toast('Widget hinzugefügt.');
+    }catch(e){toast(e.message,'error')}
+  }
 
   function renderApps() {
     const all = state.boot.apps || [];

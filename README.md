@@ -16,7 +16,7 @@ It is built for people who want a fast overview, useful widgets and a setup that
 - **Real-time monitoring** – view live values, status information and small charts at a glance.
 - **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE, Proxmox Backup Server, Zabbix, Docker and Portainer through PenguHub.
 - **Useful controls** – pause DNS protection or control selected Home Assistant entities right from the dashboard.
-- **Touch-friendly, fine-grained layout** – move and resize widgets on desktop or iPad with a much finer vertical grid; nearby tiles temporarily make room while dragging.
+- **Free 8 px canvas layout** – move and resize widgets freely on desktop or iPad with the same 8 px magnetic snap horizontally and vertically; nearby tiles temporarily make room while dragging.
 - **Private by design** – your data stays on your own server.
 
 ## Overview
@@ -139,6 +139,20 @@ Password: admin
 ```
 
 Please change the password after your first login.
+
+## Screenshots
+
+### Dashboard
+
+<p align="center">
+  <img src="docs/images/dashboard-anonymized.png" alt="PenguLab dashboard" width="100%">
+</p>
+
+### IP Manager
+
+<p align="center">
+  <img src="docs/images/ipmanager-anonymized.png" alt="PenguLab IP Manager" width="100%">
+</p>
 
 ## License
 

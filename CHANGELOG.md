@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.0
+
+- Replaced the coarse dashboard grid on desktop/iPad with a free canvas editor using an equal 8 px magnetic snap on both axes.
+- Existing 2.6 layouts are measured in the browser and migrated from their real rendered geometry, preserving the visible layout as closely as possible.
+- Widget collision/reflow now works in the same 8 px units horizontally and vertically.
+- New/empty installations start directly with the canvas layout; iPhone keeps the simplified one-column mobile editor.
+- Added the anonymized Dashboard and IP Manager screenshots to the README while keeping the existing hero image.
+
 ## 2.6.1
 
 - Doubled the desktop/tablet dashboard grid from 12 to 24 columns for finer horizontal resizing while preserving existing layouts.

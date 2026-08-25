@@ -599,3 +599,39 @@ body{background:var(--shell-highlight),var(--bg)}
 .topbar-logout{width:36px!important;height:36px!important;padding:0!important;gap:0!important;font-size:0!important}
 .topbar-logout span{display:none!important}
 .topbar-logout svg{width:18px;height:18px}
+
+/* PenguLab 2.7: free canvas editor with an equal 8px magnetic snap on both axes */
+.dashboard-grid.canvas-layout{
+  display:block;
+  position:relative;
+  min-height:var(--canvas-height,240px);
+  padding:0;
+  overflow:visible;
+}
+.dashboard-grid.canvas-layout .widget{
+  position:absolute;
+  left:calc(var(--cx) * 8px);
+  top:calc(var(--cy) * 8px);
+  width:calc(var(--cw) * 8px);
+  height:calc(var(--ch) * 8px);
+  grid-column:auto;
+  grid-row:auto;
+}
+.editing .dashboard-grid.canvas-layout{padding:0}
+.grid-reflowing.canvas-layout .widget:not(.dragging){transition:left .14s ease,top .14s ease,width .14s ease,height .14s ease,transform .14s ease}
+.canvas-layout::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  opacity:0;
+  background-image:radial-gradient(circle,color-mix(in srgb,var(--primary) 24%,transparent) .75px,transparent .8px);
+  background-size:8px 8px;
+  transition:opacity .15s ease;
+}
+.editing .canvas-layout::before{opacity:.20}
+@media(max-width:760px){
+  .dashboard-grid.canvas-layout{display:grid;grid-template-columns:1fr;grid-auto-rows:auto;min-height:240px!important}
+  .dashboard-grid.canvas-layout .widget{position:relative;left:auto;top:auto;width:100%;height:auto;grid-column:1!important;grid-row:auto!important}
+  .editing .canvas-layout::before{display:none}
+}
