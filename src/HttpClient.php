@@ -19,7 +19,7 @@ final class HttpClient
 
         $ch = curl_init($url);
         if ($ch === false) throw new RuntimeException('Could not initialize HTTP client.');
-        $headers = ['Accept: application/json', 'User-Agent: PenguLab/2.8.0'];
+        $headers = ['Accept: application/json', 'User-Agent: PenguLab/2.9.0'];
         foreach (($options['headers'] ?? []) as $key => $value) {
             $headers[] = is_int($key) ? (string)$value : ($key . ': ' . $value);
         }
@@ -30,6 +30,7 @@ final class HttpClient
             curl_setopt($ch, CURLOPT_POSTFIELDS, (string)$options['body']);
         }
 
+        $responseHeaders = [];
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST => strtoupper($method),
             CURLOPT_RETURNTRANSFER => true,
@@ -39,6 +40,18 @@ final class HttpClient
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => (bool)($options['verify_tls'] ?? true),
             CURLOPT_SSL_VERIFYHOST => ($options['verify_tls'] ?? true) ? 2 : 0,
+            CURLOPT_HEADERFUNCTION => static function($curl, string $line) use (&$responseHeaders): int {
+                $len = strlen($line);
+                $trimmed = trim($line);
+                if ($trimmed === '' || !str_contains($trimmed, ':')) return $len;
+                [$name, $value] = explode(':', $trimmed, 2);
+                $name = strtolower(trim($name));
+                $value = trim($value);
+                if ($name === '') return $len;
+                if (!isset($responseHeaders[$name])) $responseHeaders[$name] = [];
+                $responseHeaders[$name][] = $value;
+                return $len;
+            },
         ]);
 
         if (isset($options['basic'])) {
@@ -62,6 +75,6 @@ final class HttpClient
             if (json_last_error() === JSON_ERROR_NONE) $json = $decoded;
         }
 
-        return ['status' => $status, 'body' => (string)$body, 'json' => $json];
+        return ['status' => $status, 'body' => (string)$body, 'json' => $json, 'headers' => $responseHeaders];
     }
 }

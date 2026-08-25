@@ -121,7 +121,7 @@ Usage:
   pengulabctl update
   pengulabctl channel stable
   pengulabctl channel prerelease
-  pengulabctl version 2.8.0
+  pengulabctl version 2.9.0
   pengulabctl backup [target.tar.gz]
   pengulabctl logs
   pengulabctl restart

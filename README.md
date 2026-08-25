@@ -14,7 +14,7 @@ It is built for people who want a fast overview, useful widgets and a setup that
 
 - **Unified overview** – keep your most important apps, widgets and services in one place.
 - **Real-time monitoring** – view live values, status information and small charts at a glance.
-- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE, Proxmox Backup Server, Zabbix, Docker and Portainer through PenguHub.
+- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, NPMplus, Home Assistant, Proxmox VE, Proxmox Backup Server, Zabbix, Docker and Portainer through PenguHub.
 - **Useful controls** – pause DNS protection or control selected Home Assistant entities right from the dashboard.
 - **Free 8 px canvas layout** – move and resize widgets freely on desktop or iPad with the same 8 px magnetic snap horizontally and vertically; nearby tiles temporarily make room while dragging.
 - **App groups** – drag one app onto another to create a compact iPhone/iPad-style folder and keep busy dashboards tidy.
@@ -35,6 +35,7 @@ Available integrations and add-ons include:
 - Pi-hole
 - AdGuard Home
 - OPNsense — gateway, traffic, WireGuard, system resources, services and CARP/VIP status
+- NPMplus — read Proxy Hosts and import selected entries as PenguLab apps
 - Home Assistant
 - Proxmox VE
 - Proxmox Backup Server
@@ -46,6 +47,12 @@ Available integrations and add-ons include:
 - Generic JSON API widgets
 
 Admins can also upload additional PenguHub integration packages as **ZIP files** directly in the web interface. Uploaded packages are stored in `/data/addons`, so they survive normal container updates. Only install packages from sources you trust, because an integration package may contain server-side code.
+
+## NPMplus
+
+The **NPMplus** integration reads Proxy Hosts through the NPMplus API and lets an administrator choose which hosts should become PenguLab apps. New apps can stay only in the app library, be placed on the dashboard individually, or be collected directly in one PenguLab app group. Existing matching apps are reused instead of duplicated, and later imports can update their target URL without overwriting your custom name, icon or category.
+
+NPMplus authentication is performed server-side. PenguLab supports the current secure-cookie session flow as well as bearer-token responses used by older/upstream-compatible API versions.
 
 ## Proxmox Backup Server
 

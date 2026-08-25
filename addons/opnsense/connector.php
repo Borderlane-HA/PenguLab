@@ -125,7 +125,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
                 CURLOPT_TIMEOUT_MS => 2200,
                 CURLOPT_SSL_VERIFYPEER => (bool)$integration['verify_tls'],
                 CURLOPT_SSL_VERIFYHOST => !empty($integration['verify_tls']) ? 2 : 0,
-                CURLOPT_HTTPHEADER => ['Accept: text/event-stream', 'User-Agent: PenguLab/2.8.0'],
+                CURLOPT_HTTPHEADER => ['Accept: text/event-stream', 'User-Agent: PenguLab/2.9.0'],
                 CURLOPT_WRITEFUNCTION => static function($curl, string $chunk) use (&$buffer): int {
                     $buffer .= $chunk;
                     // Stop after the first complete SSE data record. Returning 0 aborts curl,

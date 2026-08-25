@@ -1,0 +1,47 @@
+{
+  "id": "npmplus",
+  "name": "NPMplus",
+  "version": "1.0.0",
+  "category": "Network",
+  "author": "Borderlane-HA",
+  "description": "Connect NPMplus, inspect Proxy Hosts and import selected hosts into the PenguLab app library.",
+  "icon": "network",
+  "connector": "connector.php",
+  "permissions": [
+    "network.http",
+    "secrets.read"
+  ],
+  "integration": {
+    "type": "npmplus",
+    "name": "NPMplus",
+    "description": "Nginx Proxy Manager Plus Proxy Hosts",
+    "fields": [
+      {
+        "key": "base_url",
+        "label": "NPMplus URL",
+        "type": "url",
+        "placeholder": "https://npm.example.local",
+        "required": true
+      },
+      {
+        "key": "username",
+        "label": "Login / E-Mail",
+        "type": "text",
+        "required": true
+      },
+      {
+        "key": "password",
+        "label": "Passwort",
+        "type": "password",
+        "secret": true,
+        "required": true
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  }
+}

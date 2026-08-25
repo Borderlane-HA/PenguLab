@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.9.0
+
+- Added a bundled **NPMplus** PenguHub integration.
+- Read NPMplus Proxy Hosts via `/api/nginx/proxy-hosts`.
+- Added a controlled Proxy Host importer with per-host selection.
+- New imports can stay in the App Library, become standalone dashboard shortcuts, or be placed directly into one PenguLab App Group.
+- Existing matching apps are reused instead of duplicated.
+- Re-import can update the app URL while preserving custom names, icons and categories.
+- NPMplus connector supports secure session cookies and bearer-token compatible API responses.
+- Generic integration cards now only show the **Widget** button when the installed connector actually provides a widget.
+- HTTP integration client now exposes response headers to connectors, required for secure cookie based APIs.
+
 ## 2.8.0
 
 - Added iPhone/iPad-style App Groups to the dashboard. Drag an App widget onto another App and hold briefly to create a folder.

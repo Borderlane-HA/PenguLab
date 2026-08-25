@@ -5,6 +5,7 @@ use PenguLab\Database;
 use PenguLab\FeedReader;
 use PenguLab\Favicon;
 use PenguLab\HttpClient;
+use PenguLab\IntegrationManager;
 
 try {
     /** @var array $ctx */
@@ -204,6 +205,25 @@ try {
             }
             $result = $integrations->execute($id, 'summary');
             json_response(['ok'=>true,'interfaces'=>is_array($result['interfaces'] ?? null) ? $result['interfaces'] : [],'gateways'=>is_array($result['gateways'] ?? null) ? $result['gateways'] : []]);
+
+        case 'npmplus/hosts':
+            require_method('POST');
+            require_admin($auth);
+            $id = trim((string)(json_body()['id'] ?? ''));
+            $integration = $integrations->full($id);
+            if (!$integration || (string)($integration['type'] ?? '') !== 'npmplus') {
+                throw new RuntimeException('NPMplus integration not found.');
+            }
+            $result = $integrations->execute($id, 'proxy_hosts');
+            $hosts = annotate_npmplus_hosts($db, $integration, is_array($result['hosts'] ?? null) ? $result['hosts'] : []);
+            json_response(['ok'=>true,'hosts'=>$hosts,'integrations'=>$integrations->list()]);
+
+        case 'npmplus/import':
+            require_method('POST');
+            require_admin($auth);
+            $input = json_body();
+            $result = import_npmplus_apps($db, $integrations, $input);
+            json_response(['ok'=>true] + $result + ['apps'=>$db->apps(),'widgets'=>$db->widgets(),'integrations'=>$integrations->list()]);
 
         case 'homeassistant/entities':
             require_method('POST');
@@ -475,6 +495,189 @@ function save_app(Database $db, array $input): array
     $stmt = $db->pdo()->prepare('SELECT * FROM apps WHERE id=:id');
     $stmt->execute(['id' => $id]);
     return $stmt->fetch() ?: [];
+}
+
+function normalized_app_url(string $url): string
+{
+    $url = trim($url);
+    if ($url === '') return '';
+    $parts = parse_url($url);
+    if (!$parts || empty($parts['host'])) return rtrim(strtolower($url), '/');
+    $scheme = strtolower((string)($parts['scheme'] ?? 'https'));
+    $host = strtolower((string)$parts['host']);
+    $port = isset($parts['port']) ? ':' . (int)$parts['port'] : '';
+    $path = rtrim((string)($parts['path'] ?? ''), '/');
+    return $scheme . '://' . $host . $port . $path;
+}
+
+function annotate_npmplus_hosts(Database $db, array $integration, array $hosts): array
+{
+    $config = is_array($integration['config'] ?? null) ? $integration['config'] : [];
+    $map = is_array($config['app_map'] ?? null) ? $config['app_map'] : [];
+    $appsById = [];
+    $appsByUrl = [];
+    foreach ($db->apps() as $app) {
+        $appsById[(string)$app['id']] = $app;
+        $norm = normalized_app_url((string)($app['url'] ?? ''));
+        if ($norm !== '' && !isset($appsByUrl[$norm])) $appsByUrl[$norm] = $app;
+    }
+    foreach ($hosts as &$host) {
+        if (!is_array($host)) continue;
+        $key = (string)($host['key'] ?? '');
+        $mappedId = trim((string)($map[$key] ?? ''));
+        $app = $mappedId !== '' ? ($appsById[$mappedId] ?? null) : null;
+        if (!$app && !empty($host['url'])) $app = $appsByUrl[normalized_app_url((string)$host['url'])] ?? null;
+        $host['imported'] = $app !== null && $mappedId !== '';
+        $host['existing'] = $app !== null;
+        $host['app_id'] = $app['id'] ?? '';
+        $host['app_name'] = $app['name'] ?? '';
+    }
+    unset($host);
+    return $hosts;
+}
+
+function app_has_standalone_widget(Database $db, string $appId): bool
+{
+    foreach ($db->widgets() as $widget) {
+        if (($widget['type'] ?? '') === 'app' && (string)($widget['config']['app_id'] ?? '') === $appId) return true;
+    }
+    return false;
+}
+
+function import_npmplus_apps(Database $db, IntegrationManager $integrations, array $input): array
+{
+    $integrationId = trim((string)($input['id'] ?? ''));
+    $integration = $integrations->full($integrationId);
+    if (!$integration || (string)($integration['type'] ?? '') !== 'npmplus') throw new RuntimeException('NPMplus integration not found.');
+
+    $selected = array_values(array_unique(array_filter(array_map('strval', is_array($input['keys'] ?? null) ? $input['keys'] : []))));
+    if ($selected === []) throw new RuntimeException('Select at least one Proxy Host.');
+    if (count($selected) > 250) throw new RuntimeException('Too many Proxy Hosts selected for one import.');
+    $category = mb_substr(trim(strip_tags((string)($input['category'] ?? 'NPMplus'))), 0, 80);
+    if ($category === '') $category = 'NPMplus';
+    $dashboardMode = (string)($input['dashboard_mode'] ?? 'library');
+    if (!in_array($dashboardMode, ['library','individual','group'], true)) $dashboardMode = 'library';
+    $groupName = mb_substr(trim(strip_tags((string)($input['group_name'] ?? 'NPMplus'))), 0, 100) ?: 'NPMplus';
+    $updateExisting = !array_key_exists('update_existing', $input) || (bool)$input['update_existing'];
+
+    $remote = $integrations->execute($integrationId, 'proxy_hosts');
+    $hosts = is_array($remote['hosts'] ?? null) ? $remote['hosts'] : [];
+    $byKey = [];
+    foreach ($hosts as $host) if (is_array($host) && isset($host['key'])) $byKey[(string)$host['key']] = $host;
+
+    $config = is_array($integration['config'] ?? null) ? $integration['config'] : [];
+    $appMap = is_array($config['app_map'] ?? null) ? $config['app_map'] : [];
+    $appsById = [];
+    $appsByUrl = [];
+    foreach ($db->apps() as $app) {
+        $appsById[(string)$app['id']] = $app;
+        $norm = normalized_app_url((string)($app['url'] ?? ''));
+        if ($norm !== '' && !isset($appsByUrl[$norm])) $appsByUrl[$norm] = $app;
+    }
+
+    $created = 0;
+    $updated = 0;
+    $reused = 0;
+    $skipped = 0;
+    $importedIds = [];
+    foreach ($selected as $key) {
+        $host = $byKey[$key] ?? null;
+        if (!$host || empty($host['importable']) || empty($host['url'])) { $skipped++; continue; }
+        $url = clean_url((string)$host['url']);
+        $appId = trim((string)($appMap[$key] ?? ''));
+        $existing = $appId !== '' ? ($appsById[$appId] ?? null) : null;
+        if (!$existing) {
+            $match = $appsByUrl[normalized_app_url($url)] ?? null;
+            if ($match) {
+                $appId = (string)$match['id'];
+                $existing = $match;
+                $appMap[$key] = $appId;
+                $reused++;
+            }
+        }
+
+        if ($existing) {
+            if ($updateExisting && normalized_app_url((string)$existing['url']) !== normalized_app_url($url)) {
+                $stmt = $db->pdo()->prepare('UPDATE apps SET url=:url,updated_at=:updated WHERE id=:id');
+                $stmt->execute(['url'=>$url,'updated'=>gmdate(DATE_ATOM),'id'=>$appId]);
+                $updated++;
+            }
+        } else {
+            $app = save_app($db, [
+                'name' => (string)($host['name'] ?? $host['domain'] ?? 'NPMplus App'),
+                'url' => $url,
+                'category' => $category,
+                'description' => 'Imported from NPMplus · ' . (string)($host['domain'] ?? ''),
+                'image' => '',
+                'add_to_dashboard' => false,
+                'favicon_verify_tls' => false,
+            ]);
+            $appId = (string)($app['id'] ?? '');
+            if ($appId === '') { $skipped++; continue; }
+            $appsById[$appId] = $app;
+            $appsByUrl[normalized_app_url($url)] = $app;
+            $appMap[$key] = $appId;
+            $created++;
+        }
+        if ($appId !== '') $importedIds[] = $appId;
+    }
+    $importedIds = array_values(array_unique($importedIds));
+
+    $groupWidgetId = trim((string)($config['dashboard_group_widget_id'] ?? ''));
+    if ($dashboardMode === 'individual') {
+        foreach ($importedIds as $appId) {
+            if (app_group_owner($db, $appId) !== null || app_has_standalone_widget($db, $appId)) continue;
+            create_widget($db, null, ['type'=>'app','config'=>['app_id'=>$appId,'layout'=>'vertical'],'w'=>11,'h'=>9]);
+        }
+    } elseif ($dashboardMode === 'group' && $importedIds !== []) {
+        // Group mode is an explicit request to consolidate these shortcuts. Remove only
+        // their standalone dashboard widgets; the App Library entries themselves remain.
+        $standalone = $db->pdo()->query("SELECT id,config_json FROM widgets WHERE type='app'")->fetchAll();
+        $selectedApps = array_fill_keys($importedIds, true);
+        $deleteStandalone = $db->pdo()->prepare('DELETE FROM widgets WHERE id=:id');
+        foreach ($standalone as $row) {
+            $wc = json_decode((string)$row['config_json'], true) ?: [];
+            if (isset($selectedApps[(string)($wc['app_id'] ?? '')])) $deleteStandalone->execute(['id'=>$row['id']]);
+        }
+        $group = $groupWidgetId !== '' ? widget_by_id($db, $groupWidgetId) : null;
+        $available = array_values(array_filter($importedIds, static function(string $appId) use ($db, $groupWidgetId): bool {
+            $owner = app_group_owner($db, $appId, $groupWidgetId);
+            return $owner === null;
+        }));
+        if ($group && ($group['type'] ?? '') === 'app-group') {
+            $ids = is_array($group['config']['app_ids'] ?? null) ? array_map('strval', $group['config']['app_ids']) : [];
+            $ids = array_values(array_unique(array_merge($ids, $available)));
+            if (count($ids) >= 2) update_widget($db, ['id'=>$groupWidgetId,'title'=>$groupName,'config'=>group_config($ids,$group['config'] ?? [])]);
+        } elseif (count($available) >= 2) {
+            $newGroup = create_widget($db, null, ['type'=>'app-group','title'=>$groupName,'config'=>['app_ids'=>$available],'w'=>14,'h'=>12]);
+            $groupWidgetId = (string)($newGroup['id'] ?? '');
+        } elseif (count($available) === 1 && !app_has_standalone_widget($db, $available[0])) {
+            create_widget($db, null, ['type'=>'app','config'=>['app_id'=>$available[0],'layout'=>'vertical'],'w'=>11,'h'=>9]);
+        }
+    }
+
+    $config['app_map'] = $appMap;
+    $config['last_import_category'] = $category;
+    if ($groupWidgetId !== '') $config['dashboard_group_widget_id'] = $groupWidgetId;
+    $saved = $integrations->save([
+        'id' => $integrationId,
+        'type' => 'npmplus',
+        'name' => (string)$integration['name'],
+        'base_url' => (string)$integration['base_url'],
+        'username' => (string)$integration['username'],
+        'verify_tls' => (bool)$integration['verify_tls'],
+        'config' => $config,
+        'secrets' => [],
+    ]);
+
+    return [
+        'created'=>$created,
+        'updated'=>$updated,
+        'reused'=>$reused,
+        'skipped'=>$skipped,
+        'imported_count'=>count($importedIds),
+        'integration'=>$saved,
+    ];
 }
 
 function delete_app(Database $db, string $id): void
