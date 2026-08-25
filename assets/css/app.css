@@ -484,3 +484,53 @@ body{background:var(--shell-highlight),var(--bg)}
 /* 2.4 Proxmox Backup Server task summary */
 .pbs-widget{height:100%;display:flex;flex-direction:column;min-height:0}.pbs-summary-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:3px 1px 8px;color:var(--primary);font-size:10px;font-weight:800}.pbs-summary-head small{color:var(--soft);font-size:8px;font-weight:700}.pbs-task-table{display:grid;gap:1px;min-height:0;overflow:auto}.pbs-task-row{min-height:27px;display:grid;grid-template-columns:minmax(150px,1fr) 54px 54px 54px;align-items:center;gap:6px;padding:4px 7px;border-radius:8px;font-size:10px}.pbs-task-row:hover{background:var(--surface-2)}.pbs-task-name{font-weight:650}.pbs-task-count{display:flex;align-items:center;gap:5px;font-weight:750;color:var(--muted)}.pbs-task-count i{width:13px;height:13px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:9px;font-style:normal;font-weight:900}.pbs-task-count.error i{background:var(--danger)}.pbs-task-count.warning i{background:var(--warning)}.pbs-task-count.ok i{background:var(--success)}.pbs-task-count.error{color:color-mix(in srgb,var(--danger) 78%,var(--text))}.pbs-task-count.warning{color:color-mix(in srgb,var(--warning) 78%,var(--text))}.pbs-task-count.ok{color:color-mix(in srgb,var(--success) 78%,var(--text))}.pbs-task-empty{padding:15px;color:var(--soft);font-size:10px}.custom-summary-rows{display:grid;gap:3px;margin-top:8px}.custom-summary-rows>div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding:5px 7px;border-radius:8px;background:var(--surface-2);font-size:9px}.custom-summary-rows small{color:var(--muted)}
 .pbs-task-count.zero{color:var(--soft)}.pbs-task-count.zero i{background:color-mix(in srgb,var(--soft) 55%,transparent);color:var(--surface)}
+
+/* PenguLab 2.5: touch-first layout editor, clean login and logout action */
+.topbar-logout{width:36px;height:36px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--muted);display:grid;place-items:center;box-shadow:var(--shadow-sm);transition:.15s ease}
+.topbar-logout:hover{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 30%,var(--border));transform:translateY(-1px)}
+.topbar-logout svg{width:18px;height:18px}
+.editing .dashboard-grid{padding:8px;border-radius:24px;background:color-mix(in srgb,var(--primary) 3%,transparent)}
+.editing .widget{touch-action:none;cursor:grab;overflow:visible;border:1px solid color-mix(in srgb,var(--primary) 42%,var(--border));box-shadow:0 10px 32px rgba(58,54,130,.10)}
+.editing .widget:active,.editing .widget.dragging{cursor:grabbing}
+.editing .widget:not(.dragging){animation:penguEditWiggle 1.8s ease-in-out infinite alternate}
+.editing .widget:nth-child(even):not(.dragging){animation-delay:-.9s}
+@keyframes penguEditWiggle{from{transform:rotate(-.12deg)}to{transform:rotate(.12deg)}}
+@media(prefers-reduced-motion:reduce){.editing .widget:not(.dragging){animation:none}}
+.editing .widget-body{pointer-events:none}
+.editing .widget-head{cursor:grab}
+.editing .widget-menu{opacity:1;position:absolute;top:-12px;right:-10px;z-index:30;gap:6px}
+.editing .widget-mini-btn{width:34px;height:34px;border-radius:999px;background:var(--surface);border:1px solid var(--border-strong);box-shadow:0 8px 22px rgba(17,24,39,.16);font-size:18px;color:var(--muted);pointer-events:auto}
+.editing .widget-mini-btn.widget-remove{background:var(--danger);border-color:var(--danger);color:#fff}
+.editing .widget-drag-handle{opacity:.55}
+.editing .widget-resize{display:block;width:34px;height:34px;right:-10px;bottom:-10px;border-radius:999px;background:var(--primary);color:#fff;box-shadow:0 8px 22px rgba(76,70,205,.28);pointer-events:auto}
+.editing .widget-resize:before,.editing .widget-resize:after{background:#fff;right:9px;bottom:10px;height:2px;border-radius:2px}
+.editing .widget-resize:after{bottom:15px}
+.grid-reflowing .widget:not(.dragging){transition:grid-column .15s ease,grid-row .15s ease,transform .15s ease}
+
+/* Cleaner login: logo, product name, control-center label and form only. */
+.login-page{background:radial-gradient(circle at 78% 16%,rgba(101,74,255,.20),transparent 34%),linear-gradient(135deg,#071020 0%,#0b1630 58%,#211760 100%)}
+.login-wrap{width:min(390px,100%)}
+.login-card.login-card-clean{padding:34px 32px 28px;border-radius:25px;background:linear-gradient(180deg,rgba(15,23,47,.97),rgba(13,20,43,.96));border:1px solid rgba(145,159,220,.24);box-shadow:0 30px 80px rgba(1,5,22,.34)}
+.login-card-clean::before{height:0}
+.login-brand-clean{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;margin:0 0 24px}
+.login-brand-clean .login-logo{width:76px;height:76px;object-fit:contain;filter:drop-shadow(0 14px 22px rgba(65,87,255,.22))}
+.login-brand-clean strong{font-size:30px;line-height:1;font-weight:820;letter-spacing:-.045em;color:#fff}
+.login-card-clean .eyebrow{text-align:center;margin-bottom:14px;color:#9185ff}
+.login-card-clean h1{text-align:center;font-size:28px;margin:0 0 24px;color:#fff}
+.login-card-clean .field-row{margin-bottom:15px}
+.login-card-clean .field-row label{font-size:11px;color:rgba(238,241,255,.78);margin-bottom:6px}
+.login-card-clean .field-row input{height:44px;border-radius:11px;background:#fff;color:#152039;border:0;box-shadow:none}
+.login-card-clean .remember-line{margin:2px 0 18px;color:rgba(238,241,255,.72)}
+.login-card-clean .login-button{height:45px;border-radius:11px;background:linear-gradient(90deg,#5b5ff7,#765cf6);box-shadow:0 12px 26px rgba(81,67,245,.25)}
+.login-card-clean .login-hint{text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.09);color:rgba(221,226,247,.46)}
+.login-card-clean .login-hint code{color:rgba(255,255,255,.78)}
+
+@media(max-width:760px){
+  .topbar-logout{width:36px;height:36px}
+  .editing .widget-menu{top:8px;right:8px}
+  .editing .widget-mini-btn{width:38px;height:38px}
+}
+.edit-mode-pill{display:inline-flex;align-items:center;height:25px;padding:0 9px;margin-right:7px;border-radius:999px;background:var(--primary);color:#fff;font-size:10px;font-weight:850;letter-spacing:.02em;box-shadow:0 7px 18px color-mix(in srgb,var(--primary) 25%,transparent)}
+.topbar-logout{width:auto;padding:0 11px;gap:7px;font-size:11px;font-weight:750}
+.topbar-logout span{display:inline}
+@media(max-width:900px){.topbar-logout{width:36px;padding:0}.topbar-logout span{display:none}}

@@ -16,6 +16,7 @@ function icon(string $name): string
         'back' => '<path d="m15 18-6-6 6-6"/>',
         'menu' => '<path d="M4 7h16M4 12h16M4 17h16"/>',
         'collapse' => '<path d="m14 7-5 5 5 5"/>',
+        'logout' => '<path d="M10 17l5-5-5-5M15 12H3M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/>',
     ];
     $path = $paths[$name] ?? $paths['apps'];
     return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' . $path . '</svg>';

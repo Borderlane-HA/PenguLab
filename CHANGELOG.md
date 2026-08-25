@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.0
+
+- Added a touch-first dashboard editor: drag from the entire tile, larger edit controls and temporary collision reflow while moving/resizing widgets.
+- Added a visible logout action to the dashboard top bar.
+- Simplified and polished the login screen.
+- Split Proxmox Backup Server task categories into individual display toggles, including separate Tape Backup and Tape Restore controls.
+- Added Docker Engine monitoring integration.
+- Added Portainer monitoring integration using API access tokens.
+- Added a standalone `pengulabctl` installer/repair helper for existing Proxmox LXCs.
+
 ## 2.4.0
 
 - Added admin-only PenguHub ZIP uploads for custom integration/add-on packages. Uploaded packages are validated and stored under `/data/addons` so they survive container updates.

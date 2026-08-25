@@ -14,9 +14,9 @@ It is built for people who want a fast overview, useful widgets and a setup that
 
 - **Unified overview** – keep your most important apps, widgets and services in one place.
 - **Real-time monitoring** – view live values, status information and small charts at a glance.
-- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE, Proxmox Backup Server and Zabbix through PenguHub.
+- **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE, Proxmox Backup Server, Zabbix, Docker and Portainer through PenguHub.
 - **Useful controls** – pause DNS protection or control selected Home Assistant entities right from the dashboard.
-- **Flexible layout** – move, resize and arrange widgets the way you like, from tiny Home Assistant controls to larger monitoring panels.
+- **Touch-friendly layout** – move and resize widgets on desktop or iPad; while dragging, nearby tiles temporarily make room and return when that space is no longer needed.
 - **Private by design** – your data stays on your own server.
 
 ## Overview
@@ -38,6 +38,8 @@ Available integrations and add-ons include:
 - Proxmox VE
 - Proxmox Backup Server
 - Zabbix
+- Docker Engine
+- Portainer
 - RSS / Atom feeds
 - IP Manager
 - Generic JSON API widgets
@@ -49,6 +51,12 @@ Admins can also upload additional PenguHub integration packages as **ZIP files**
 The PBS integration uses a read-only API token and can show the familiar **Task Summary** for a selectable time window (7, 30 or 90 days): backups, prunes, garbage collection, syncs, verify jobs and tape backup/restore tasks with OK, warning and error counts.
 
 For API-token authentication, use the PBS token ID (`user@realm!tokenname`) and token secret. A monitoring token needs appropriate read/audit permissions for the tasks it should see.
+
+## Docker & Portainer
+
+The **Docker Engine** integration provides a read-only dashboard view of containers, images and host resources through a remote Docker Engine API. Do not expose an unauthenticated Docker API directly to untrusted networks; use a protected TLS/reverse-proxy endpoint if you need direct Docker monitoring.
+
+The **Portainer** integration uses a Portainer API access token and can summarize accessible environments, running containers and stacks. For many homelabs this is the easier way to monitor several Docker hosts from one PenguLab widget.
 
 ## Install with Docker
 
@@ -114,6 +122,12 @@ pengulabctl update
 ```
 
 `pengulabctl update` creates a backup of the persistent PenguLab data before pulling and starting the new image.
+
+If an older PenguLab LXC says `pengulabctl: command not found`, install/repair the helper once inside the LXC:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Borderlane-HA/PenguLab/main/scripts/install-pengulabctl.sh | bash
+```
 
 ## First login
 

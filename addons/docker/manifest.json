@@ -1,0 +1,37 @@
+{
+  "id": "docker",
+  "name": "Docker Engine",
+  "version": "1.0.0",
+  "category": "Infrastructure",
+  "author": "Borderlane-HA",
+  "description": "Show Docker Engine containers, images and host resources from a remote read-only API endpoint.",
+  "icon": "docker",
+  "connector": "connector.php",
+  "permissions": ["network.http", "secrets.read"],
+  "integration": {
+    "type": "docker",
+    "name": "Docker Engine",
+    "description": "Docker Engine HTTP API (read-only monitoring)",
+    "fields": [
+      {"key":"base_url","label":"Docker API URL","type":"url","placeholder":"https://docker.local:2376","required":true},
+      {"key":"username","label":"Basic-Auth Benutzer (optional)","type":"text","placeholder":"monitoring","required":false},
+      {"key":"password","label":"Basic-Auth Passwort (optional)","type":"password","secret":true,"required":false},
+      {"key":"verify_tls","label":"Verify TLS certificate","type":"boolean","default":true}
+    ],
+    "widget_options": [
+      {"key":"refresh_interval","label":"Live-Aktualisierung","type":"select","default":"30","options":[
+        {"value":"10","label":"alle 10 Sekunden"},{"value":"30","label":"alle 30 Sekunden"},{"value":"60","label":"jede Minute"}
+      ]},
+      {"key":"show_containers","label":"Container anzeigen","type":"boolean","default":true},
+      {"key":"show_images","label":"Images anzeigen","type":"boolean","default":true},
+      {"key":"show_resources","label":"CPU & RAM des Hosts anzeigen","type":"boolean","default":true},
+      {"key":"show_recent_containers","label":"Container-Liste anzeigen","type":"boolean","default":true},
+      {"key":"container_limit","label":"Anzahl Container in der Liste","type":"select","default":"5","options":[
+        {"value":"3","label":"3"},{"value":"5","label":"5"},{"value":"10","label":"10"}
+      ]}
+    ]
+  },
+  "widgets": [
+    {"type":"integration-summary","integrationType":"docker","name":"Docker Engine","description":"Containers, images and Docker host resources.","icon":"docker","defaultSize":[4,2]}
+  ]
+}

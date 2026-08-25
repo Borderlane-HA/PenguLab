@@ -172,8 +172,8 @@
     const dashboardActions=isAdmin()?(state.editMode
       ? `<button class="btn" id="cancelLayoutBtn">Abbrechen</button><button class="btn primary" id="saveLayoutBtn">Speichern</button>`
       : `<button class="btn" id="editLayoutBtn">Layout bearbeiten</button><button class="btn primary" id="addWidgetBtn">+ Widget</button>`):'';
-    const editHint=state.editMode?'Widgets ziehen oder am rechten unteren Rand skalieren. Erst „Speichern“ übernimmt das komplette Layout.':'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
-    appRoot.innerHTML = pageHead('Control Center', title, 'Apps, Services und Homelab-Status an einem Ort.', dashboardActions) + (isAdmin()?`<div class="dashboard-toolbar"><span class="edit-hint">${esc(editHint)}</span></div>`:'') +
+    const editHint=state.editMode?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel an beliebiger Stelle anfassen und ziehen. Andere Kacheln machen automatisch Platz.':'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
+    appRoot.innerHTML = pageHead('Control Center', title, 'Apps, Services und Homelab-Status an einem Ort.', dashboardActions) + (isAdmin()?`<div class="dashboard-toolbar"><span class="edit-hint">${state.editMode?editHint:esc(editHint)}</span></div>`:'') +
     `<div class="dashboard-grid" id="dashboardGrid">${widgets.length ? widgets.map(widgetShell).join('') : `<div class="empty-dashboard"><h3>Dein Dashboard ist bereit</h3><p>${isAdmin()?'Füge Apps, Statuskarten, RSS oder Add-on-Widgets hinzu.':'Für deinen Benutzer sind noch keine Dashboard-Widgets freigegeben.'}</p>${isAdmin()?'<button class="btn primary" id="emptyAddWidget">+ Erstes Widget</button>':''}</div>`}</div>`;
 
     $('#editLayoutBtn')?.addEventListener('click', beginLayoutEdit);
@@ -466,7 +466,8 @@
       add('garbage_collection',integrationOption(integration,'show_gc',true));
       add('sync',integrationOption(integration,'show_sync',true));
       add('verify',integrationOption(integration,'show_verify',true));
-      if(integrationOption(integration,'show_tape',true)){add('tape_backup',true);add('tape_restore',true);}
+      add('tape_backup',integrationOption(integration,'show_tape_backup',false));
+      add('tape_restore',integrationOption(integration,'show_tape_restore',false));
       const table=rows.map(r=>`<div class="pbs-task-row"><span class="pbs-task-name">${esc(r.label||'Task')}</span><span class="pbs-task-count error ${Number(r.error||0)?'':'zero'}"><i>×</i>${fmt(r.error||0)}</span><span class="pbs-task-count warning ${Number(r.warning||0)?'':'zero'}"><i>!</i>${fmt(r.warning||0)}</span><span class="pbs-task-count ok ${Number(r.ok||0)?'':'zero'}"><i>✓</i>${fmt(r.ok||0)}</span></div>`).join('');
       return `<div class="pbs-widget"><div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state active">Online</span></div><div class="pbs-summary-head"><span>Task Summary (${fmt(summary.days||cfg.summary_days||30)} days)</span>${summary.version?`<small>PBS ${esc(summary.version)}</small>`:''}</div><div class="pbs-task-table">${table||'<div class="pbs-task-empty">Keine Task-Kategorien aktiviert.</div>'}</div></div>`;
     }
@@ -504,10 +505,20 @@
   }
 
   function enableGridInteractions() {
-    const grid = $('#dashboardGrid'); if (!grid || matchMedia('(max-width:760px)').matches) return;
+    const grid = $('#dashboardGrid'); if (!grid) return;
+    // The 12-column editor is used on tablets/desktop. Narrow phones keep the
+    // simple single-column view, but delete/settings controls remain reachable.
+    if (matchMedia('(max-width:760px)').matches) return;
     const widgets = state.boot.widgets || [];
     $$('.widget', grid).forEach(el => {
       const id = el.dataset.widgetId; const widget = widgets.find(w => w.id === id); if (!widget) return;
+      // In edit mode the complete tile is a drag target. This is much easier on
+      // touch devices than aiming for a tiny drag handle.
+      el.addEventListener('pointerdown', ev => {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        if (ev.target.closest('.widget-mini-btn,.widget-resize,.widget-drag-handle,button,a,input,select,textarea,label')) return;
+        startDrag(ev, el, widget, grid);
+      });
       $('.widget-drag-handle', el)?.addEventListener('pointerdown', ev => startDrag(ev, el, widget, grid));
       $('.widget-resize', el)?.addEventListener('pointerdown', ev => startResize(ev, el, widget, grid));
     });
@@ -521,18 +532,67 @@
   function positionFree(candidate, widgets, ignoreId) { return !widgets.some(w => w.id !== ignoreId && intersects(candidate,w)); }
   function setWidgetStyle(el,w){el.style.setProperty('--x',w.x);el.style.setProperty('--y',w.y);el.style.setProperty('--w',w.w);el.style.setProperty('--h',w.h);}
   function markLayoutDirty(){state.layoutDirty=true;const btn=$('#saveLayoutBtn');if(btn)btn.disabled=false;}
+  function positionSnapshot(widgets){
+    const out={}; for(const w of widgets||[]) out[w.id]={id:w.id,x:w.x,y:w.y,w:w.w,h:w.h}; return out;
+  }
+  function applyPositionMap(map, widgets, grid){
+    for(const w of widgets||[]){const pos=map[w.id];if(!pos)continue;Object.assign(w,{x:pos.x,y:pos.y,w:pos.w,h:pos.h});const el=grid.querySelector(`[data-widget-id="${CSS.escape(w.id)}"]`);if(el)setWidgetStyle(el,w);}
+  }
+  function overlapsAny(pos, occupied){return occupied.some(o=>intersects(pos,o));}
+  function nearestSlot(source, occupied){
+    const maxX=Math.max(0,12-source.w);
+    const xs=Array.from({length:maxX+1},(_,x)=>x).sort((a,b)=>Math.abs(a-source.x)-Math.abs(b-source.x));
+    for(let dy=0;dy<40;dy++){
+      const y=Math.max(0,source.y+dy);
+      for(const x of xs){const c={...source,x,y};if(!overlapsAny(c,occupied))return c;}
+    }
+    return {...source,x:0,y:Math.max(0,source.y+40)};
+  }
+  function reflowPreview(dragId, candidate, base, widgets){
+    const result={};
+    const dragged={...base[dragId],...candidate,id:dragId}; result[dragId]=dragged;
+    const occupied=[dragged];
+    const others=(widgets||[]).filter(w=>w.id!==dragId).map(w=>({...base[w.id]})).sort((a,b)=>a.y-b.y||a.x-b.x);
+    for(const original of others){
+      let placed={...original};
+      if(overlapsAny(placed,occupied)) placed=nearestSlot(original,occupied);
+      result[original.id]=placed; occupied.push(placed);
+    }
+    return result;
+  }
+  function layoutChangedFrom(base, widgets){
+    return (widgets||[]).some(w=>{const b=base[w.id];return !b||w.x!==b.x||w.y!==b.y||w.w!==b.w||w.h!==b.h;});
+  }
   function startDrag(ev, el, widget, grid) {
-    ev.preventDefault(); ev.stopPropagation(); el.setPointerCapture?.(ev.pointerId); el.classList.add('dragging');
-    const m=gridMetrics(grid), sx=ev.clientX, sy=ev.clientY, original={x:widget.x,y:widget.y};
-    const move=e=>{const dx=Math.round((e.clientX-sx)/(m.col+m.gap));const dy=Math.round((e.clientY-sy)/m.unitY);widget.x=Math.max(0,Math.min(12-widget.w,original.x+dx));widget.y=Math.max(0,original.y+dy);setWidgetStyle(el,widget)};
-    const up=e=>{el.classList.remove('dragging');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(!positionFree(widget,state.boot.widgets,widget.id)){widget.x=original.x;widget.y=original.y;setWidgetStyle(el,widget);toast('Dort ist bereits ein anderes Widget.','error');return;}if(widget.x!==original.x||widget.y!==original.y)markLayoutDirty();};
-    window.addEventListener('pointermove',move);window.addEventListener('pointerup',up,{once:true});
+    ev.preventDefault(); ev.stopPropagation(); el.setPointerCapture?.(ev.pointerId); el.classList.add('dragging'); grid.classList.add('grid-reflowing');
+    const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]};
+    const move=e=>{
+      e.preventDefault?.();
+      const dx=Math.round((e.clientX-sx)/(m.col+m.gap));const dy=Math.round((e.clientY-sy)/m.unitY);
+      const candidate={...original,x:Math.max(0,Math.min(12-widget.w,original.x+dx)),y:Math.max(0,original.y+dy)};
+      applyPositionMap(reflowPreview(widget.id,candidate,base,widgets),widgets,grid);
+    };
+    const up=e=>{
+      el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);
+      if(layoutChangedFrom(base,widgets))markLayoutDirty();
+    };
+    window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
   function startResize(ev, el, widget, grid) {
-    ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');const m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={w:widget.w,h:widget.h};
-    const move=e=>{const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);const minW=widget.type==='app'?1:2;widget.w=Math.max(minW,Math.min(12-widget.x,original.w+dw));widget.h=Math.max(1,Math.min(8,original.h+dh));setWidgetStyle(el,widget);el.classList.toggle('app-widget-xs',widget.type==='app'&&widget.w<=1);el.classList.toggle('app-widget-sm',widget.type==='app'&&widget.w===2);el.classList.toggle('app-widget-lg',widget.type==='app'&&widget.w>=3)};
-    const up=()=>{el.classList.remove('dragging');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(!positionFree(widget,state.boot.widgets,widget.id)){widget.w=original.w;widget.h=original.h;setWidgetStyle(el,widget);toast('Dort ist nicht genug Platz.','error');return;}if(widget.w!==original.w||widget.h!==original.h){markLayoutDirty();loadOneWidget(widget,true);}};
-    window.addEventListener('pointermove',move);window.addEventListener('pointerup',up,{once:true});
+    ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
+    const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]};
+    const move=e=>{
+      e.preventDefault?.();
+      const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);const minW=widget.type==='app'||widget.type==='homeassistant-entities'?1:2;
+      const candidate={...original,w:Math.max(minW,Math.min(12-original.x,original.w+dw)),h:Math.max(1,Math.min(8,original.h+dh))};
+      applyPositionMap(reflowPreview(widget.id,candidate,base,widgets),widgets,grid);
+      el.classList.toggle('app-widget-xs',widget.type==='app'&&widget.w<=1);el.classList.toggle('app-widget-sm',widget.type==='app'&&widget.w===2);el.classList.toggle('app-widget-lg',widget.type==='app'&&widget.w>=3);
+    };
+    const up=()=>{
+      el.classList.remove('dragging');grid.classList.remove('grid-reflowing');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);
+      if(layoutChangedFrom(base,widgets)){markLayoutDirty();loadOneWidget(widget,true);}
+    };
+    window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
 
   function openWidgetSettings(widget){

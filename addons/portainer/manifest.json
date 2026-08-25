@@ -1,0 +1,37 @@
+{
+  "id": "portainer",
+  "name": "Portainer",
+  "version": "1.0.0",
+  "category": "Infrastructure",
+  "author": "Borderlane-HA",
+  "description": "Monitor Portainer environments, stacks and Docker containers using an API access token.",
+  "icon": "portainer",
+  "connector": "connector.php",
+  "permissions": ["network.http", "secrets.read"],
+  "integration": {
+    "type": "portainer",
+    "name": "Portainer",
+    "description": "Portainer HTTP API using an X-API-Key access token",
+    "fields": [
+      {"key":"base_url","label":"Portainer URL","type":"url","placeholder":"https://portainer.local:9443","required":true},
+      {"key":"api_key","label":"API Access Token","type":"password","secret":true,"required":true},
+      {"key":"endpoint_id","label":"Environment ID (optional)","type":"text","placeholder":"Leer = alle erreichbaren Docker Environments","required":false},
+      {"key":"verify_tls","label":"Verify TLS certificate","type":"boolean","default":true}
+    ],
+    "widget_options": [
+      {"key":"refresh_interval","label":"Live-Aktualisierung","type":"select","default":"30","options":[
+        {"value":"10","label":"alle 10 Sekunden"},{"value":"30","label":"alle 30 Sekunden"},{"value":"60","label":"jede Minute"}
+      ]},
+      {"key":"show_environments","label":"Environments anzeigen","type":"boolean","default":true},
+      {"key":"show_containers","label":"Container anzeigen","type":"boolean","default":true},
+      {"key":"show_stacks","label":"Stacks anzeigen","type":"boolean","default":true},
+      {"key":"show_environment_list","label":"Environment-Liste anzeigen","type":"boolean","default":true},
+      {"key":"environment_limit","label":"Anzahl Environments in der Liste","type":"select","default":"5","options":[
+        {"value":"3","label":"3"},{"value":"5","label":"5"},{"value":"10","label":"10"}
+      ]}
+    ]
+  },
+  "widgets": [
+    {"type":"integration-summary","integrationType":"portainer","name":"Portainer","description":"Environments, stacks and container status.","icon":"portainer","defaultSize":[4,2]}
+  ]
+}
