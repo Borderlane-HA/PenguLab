@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.2
+
+- Removed redundant dashboard title bars from clock and integration widgets when no custom widget title is set.
+- Integration names remain visible inside their cards, saving vertical space and avoiding duplicated labels.
+- RSS/News keeps its header because it is useful as a section title.
+- Edit mode still shows widget headers so drag, settings and remove controls remain accessible.
+- Custom widget titles continue to be shown.
+
+## 2.5.1
+
+- Added a real smartphone layout editor: drag widgets vertically on iPhone-sized screens and choose compact, standard or large mobile widget sizes.
+- Kept free-grid drag/resize for iPad, tablets and desktop while improving touch targets.
+- Added the settings button to every integration-summary widget so its integration can be opened directly from dashboard edit mode.
+- Reduced the visual weight of edit controls while keeping remove/settings accessible on small widgets.
+- Responsive mobile order and size are stored with the dashboard layout and can be cancelled before saving.
+
 ## 2.5.0
 
 - Added a touch-first dashboard editor: drag from the entire tile, larger edit controls and temporary collision reflow while moving/resizing widgets.

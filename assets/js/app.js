@@ -122,9 +122,13 @@
     window.scrollTo({top:0, behavior:'auto'});
   }
 
+  const cloneConfig = value => JSON.parse(JSON.stringify(value || {}));
+  const isPhoneEditor = () => matchMedia('(max-width:760px)').matches;
+  const mobileOrderOf = widget => Number.isFinite(Number(widget?.config?.mobile_order)) ? Number(widget.config.mobile_order) : ((Number(widget?.y)||0)*12 + (Number(widget?.x)||0));
+
   function layoutSnapshot() {
     const out = {};
-    for (const w of state.boot?.widgets || []) out[w.id] = {x:w.x,y:w.y,w:w.w,h:w.h};
+    for (const w of state.boot?.widgets || []) out[w.id] = {x:w.x,y:w.y,w:w.w,h:w.h,config:cloneConfig(w.config)};
     return out;
   }
 
@@ -139,7 +143,7 @@
     if (state.layoutOriginal) {
       for (const widget of state.boot?.widgets || []) {
         const original = state.layoutOriginal[widget.id];
-        if (original) Object.assign(widget, original);
+        if (original) { Object.assign(widget, {x:original.x,y:original.y,w:original.w,h:original.h}); widget.config=cloneConfig(original.config); }
       }
     }
     state.layoutOriginal = null;
@@ -153,7 +157,7 @@
     if (!state.layoutDirty) { discardLayoutEdit(); return; }
     const button=$('#saveLayoutBtn');if(button){button.disabled=true;button.textContent='Speichert…';}
     try {
-      const d=await api('widgets/layout',{body:{widgets:(state.boot.widgets||[]).map(({id,x,y,w,h})=>({id,x,y,w,h}))}});
+      const d=await api('widgets/layout',{body:{widgets:(state.boot.widgets||[]).map(({id,x,y,w,h,config})=>({id,x,y,w,h,config:cloneConfig(config)}))}});
       state.boot.widgets=d.widgets;
       state.layoutOriginal=null;state.layoutDirty=false;state.editMode=false;
       renderDashboard();toast('Dashboard-Layout gespeichert.');
@@ -172,7 +176,7 @@
     const dashboardActions=isAdmin()?(state.editMode
       ? `<button class="btn" id="cancelLayoutBtn">Abbrechen</button><button class="btn primary" id="saveLayoutBtn">Speichern</button>`
       : `<button class="btn" id="editLayoutBtn">Layout bearbeiten</button><button class="btn primary" id="addWidgetBtn">+ Widget</button>`):'';
-    const editHint=state.editMode?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel an beliebiger Stelle anfassen und ziehen. Andere Kacheln machen automatisch Platz.':'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
+    const editHint=state.editMode?(isPhoneEditor()?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel halten und vertikal verschieben. Größe über ↕ ändern.':'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel an beliebiger Stelle anfassen und ziehen. Andere Kacheln machen automatisch Platz.'):'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
     appRoot.innerHTML = pageHead('Control Center', title, 'Apps, Services und Homelab-Status an einem Ort.', dashboardActions) + (isAdmin()?`<div class="dashboard-toolbar"><span class="edit-hint">${state.editMode?editHint:esc(editHint)}</span></div>`:'') +
     `<div class="dashboard-grid" id="dashboardGrid">${widgets.length ? widgets.map(widgetShell).join('') : `<div class="empty-dashboard"><h3>Dein Dashboard ist bereit</h3><p>${isAdmin()?'Füge Apps, Statuskarten, RSS oder Add-on-Widgets hinzu.':'Für deinen Benutzer sind noch keine Dashboard-Widgets freigegeben.'}</p>${isAdmin()?'<button class="btn primary" id="emptyAddWidget">+ Erstes Widget</button>':''}</div>`}</div>`;
 
@@ -188,6 +192,9 @@
     $$('.widget-settings', appRoot).forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation(); const widget=(state.boot.widgets||[]).find(w=>w.id===btn.dataset.id); if(widget) openWidgetSettings(widget);
     }));
+    $$('.widget-mobile-size', appRoot).forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation(); const widget=(state.boot.widgets||[]).find(w=>w.id===btn.dataset.id); if(widget) openMobileSizeSettings(widget);
+    }));
     if (state.editMode) enableGridInteractions();
     loadWidgetData();
   }
@@ -198,10 +205,14 @@
     const sizeClass = widget.type === 'app' ? (widget.w <= 1 ? 'app-widget-xs' : widget.w === 2 ? 'app-widget-sm' : 'app-widget-lg') : '';
     const haCount = widget.type === 'homeassistant-entities' ? (Array.isArray(widget.config?.entity_ids) ? widget.config.entity_ids.length : 0) : 0;
     const haSizeClass = widget.type === 'homeassistant-entities' ? `${haCount===1?'ha-widget-single ':''}${widget.w<=1?'ha-widget-xs ':''}${haCount>=4||widget.w<=2?'ha-widget-dense':''}`.trim() : '';
-    const settingsButton = isAdmin() && ['app','homeassistant-entities'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
-    const hideHead = widget.type === 'homeassistant-entities' && !String(widget.title || '').trim() && !state.editMode;
-    const head = hideHead ? '' : `<div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>`;
-    return `<section class="widget ${typeClass} ${sizeClass} ${haSizeClass} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2}">
+    const settingsButton = isAdmin() && ['app','homeassistant-entities','integration-summary'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
+    const mobileSize = ['small','medium','large'].includes(String(widget.config?.mobile_size||'')) ? String(widget.config.mobile_size) : 'auto';
+    const phoneSizeButton = isAdmin() ? `<button class="widget-mini-btn widget-mobile-size" data-id="${attr(widget.id)}" title="Größe auf Mobilgeräten">↕</button>` : '';
+    const hasCustomTitle = !!String(widget.title || '').trim();
+    const autoCompactHeadTypes = ['homeassistant-entities','integration-summary','clock'];
+    const hideHead = autoCompactHeadTypes.includes(widget.type) && !hasCustomTitle && !state.editMode;
+    const head = hideHead ? '' : `<div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${phoneSizeButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>`;
+    return `<section class="widget ${typeClass} ${sizeClass} ${haSizeClass} mobile-size-${mobileSize} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2};--mobile-order:${mobileOrderOf(widget)}">
       ${head}
       <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
     </section>`;
@@ -506,10 +517,8 @@
 
   function enableGridInteractions() {
     const grid = $('#dashboardGrid'); if (!grid) return;
-    // The 12-column editor is used on tablets/desktop. Narrow phones keep the
-    // simple single-column view, but delete/settings controls remain reachable.
-    if (matchMedia('(max-width:760px)').matches) return;
     const widgets = state.boot.widgets || [];
+    if (isPhoneEditor()) { enableMobileGridInteractions(grid, widgets); return; }
     $$('.widget', grid).forEach(el => {
       const id = el.dataset.widgetId; const widget = widgets.find(w => w.id === id); if (!widget) return;
       // In edit mode the complete tile is a drag target. This is much easier on
@@ -524,13 +533,43 @@
     });
   }
 
+  function enableMobileGridInteractions(grid, widgets) {
+    $$('.widget', grid).forEach(el => {
+      const widget=widgets.find(w=>w.id===el.dataset.widgetId); if(!widget)return;
+      const start=ev=>{
+        if(ev.button!==undefined&&ev.button!==0)return;
+        if(ev.target.closest('.widget-mini-btn,button,a,input,select,textarea,label'))return;
+        startMobileDrag(ev,el,widget,grid,widgets);
+      };
+      el.addEventListener('pointerdown',start);
+      $('.widget-drag-handle',el)?.addEventListener('pointerdown',ev=>startMobileDrag(ev,el,widget,grid,widgets));
+    });
+  }
+
+  function startMobileDrag(ev,el,widget,grid,widgets){
+    ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
+    const ordered=[...widgets].sort((a,b)=>mobileOrderOf(a)-mobileOrderOf(b));
+    const originalOrder=ordered.map(w=>w.id);let current=[...originalOrder];
+    const apply=ids=>{ids.forEach((id,index)=>{const w=widgets.find(x=>x.id===id);if(!w)return;w.config={...(w.config||{}),mobile_order:index};const node=grid.querySelector(`[data-widget-id="${CSS.escape(id)}"]`);if(node){node.style.setProperty('--mobile-order',index);node.style.order=String(index);}})};
+    const move=e=>{
+      e.preventDefault?.();
+      const others=current.filter(id=>id!==widget.id);
+      let target=others.length;
+      for(let i=0;i<others.length;i++){const node=grid.querySelector(`[data-widget-id="${CSS.escape(others[i])}"]`);if(!node)continue;const r=node.getBoundingClientRect();if(e.clientY<r.top+r.height/2){target=i;break;}}
+      const next=[...others];next.splice(target,0,widget.id);
+      if(next.join('|')!==current.join('|')){current=next;apply(current);}
+    };
+    const up=()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(current.join('|')!==originalOrder.join('|'))markLayoutDirty();};
+    window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
+  }
+
   function gridMetrics(grid) {
     const style = getComputedStyle(grid); const gap = parseFloat(style.columnGap) || 16; const row = parseFloat(style.gridAutoRows) || 86; const rect = grid.getBoundingClientRect();
     return { rect, gap, col: (rect.width - gap * 11) / 12, row, unitY: row + gap };
   }
   const intersects = (a,b) => a.id !== b.id && a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
   function positionFree(candidate, widgets, ignoreId) { return !widgets.some(w => w.id !== ignoreId && intersects(candidate,w)); }
-  function setWidgetStyle(el,w){el.style.setProperty('--x',w.x);el.style.setProperty('--y',w.y);el.style.setProperty('--w',w.w);el.style.setProperty('--h',w.h);}
+  function setWidgetStyle(el,w){el.style.setProperty('--x',w.x);el.style.setProperty('--y',w.y);el.style.setProperty('--w',w.w);el.style.setProperty('--h',w.h);el.style.setProperty('--mobile-order',mobileOrderOf(w));if(isPhoneEditor())el.style.order=String(mobileOrderOf(w));}
   function markLayoutDirty(){state.layoutDirty=true;const btn=$('#saveLayoutBtn');if(btn)btn.disabled=false;}
   function positionSnapshot(widgets){
     const out={}; for(const w of widgets||[]) out[w.id]={id:w.id,x:w.x,y:w.y,w:w.w,h:w.h}; return out;
@@ -602,8 +641,19 @@
       return;
     }
     if(widget.type==='homeassistant-entities'){
-      openHomeAssistantWidgetModal(widget.config?.integration_id, widget);
+      openHomeAssistantWidgetModal(widget.config?.integration_id, widget);return;
     }
+    if(widget.type==='integration-summary'){
+      const integration=(state.boot.integrations||[]).find(i=>i.id===widget.config?.integration_id);
+      if(integration)openIntegrationModal(integration);else toast('Integration nicht gefunden.','error');
+    }
+  }
+
+  function openMobileSizeSettings(widget){
+    const current=['small','medium','large'].includes(String(widget.config?.mobile_size||''))?String(widget.config.mobile_size):'medium';
+    showModal('Mobile Widget-Größe','Gilt für die einspaltige Smartphone-Ansicht. Das Desktop-/iPad-Raster bleibt unverändert.',`<div class="mobile-size-picker"><button type="button" data-mobile-size="small" class="${current==='small'?'active':''}"><strong>Klein</strong><span>Kompakt</span></button><button type="button" data-mobile-size="medium" class="${current==='medium'?'active':''}"><strong>Mittel</strong><span>Standard</span></button><button type="button" data-mobile-size="large" class="${current==='large'?'active':''}"><strong>Groß</strong><span>Mehr Inhalt</span></button></div>`,`<button class="btn" data-close-modal>Abbrechen</button>`,modal=>{
+      $$('[data-mobile-size]',modal).forEach(btn=>btn.onclick=()=>{widget.config={...(widget.config||{}),mobile_size:btn.dataset.mobileSize};markLayoutDirty();closeModal();renderDashboard();});
+    });
   }
 
   function openWidgetPicker() {

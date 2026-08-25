@@ -573,11 +573,28 @@ function save_layout(Database $db, mixed $items): void
         }
     }
 
-    $stmt = $db->pdo()->prepare('UPDATE widgets SET x=:x,y=:y,w=:w,h=:h,updated_at=:updated WHERE id=:id');
+    // Preserve optional per-widget responsive editor settings (for example
+    // smartphone order/size) together with the atomic layout snapshot.
+    $submittedConfig = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) continue;
+        $id = trim((string)($item['id'] ?? ''));
+        if ($id !== '' && isset($byId[$id]) && is_array($item['config'] ?? null)) {
+            $submittedConfig[$id] = $item['config'];
+        }
+    }
+
+    $stmt = $db->pdo()->prepare('UPDATE widgets SET x=:x,y=:y,w=:w,h=:h,config_json=:config,updated_at=:updated WHERE id=:id');
     $now = gmdate(DATE_ATOM);
-    $db->transaction(function() use ($layout,$stmt,$now): void {
+    $db->transaction(function() use ($layout,$stmt,$now,$submittedConfig,$byId): void {
         foreach ($layout as $item) {
-            $stmt->execute(['x'=>$item['x'],'y'=>$item['y'],'w'=>$item['w'],'h'=>$item['h'],'updated'=>$now,'id'=>$item['id']]);
+            $id=(string)$item['id'];
+            $config=$submittedConfig[$id] ?? ($byId[$id]['config'] ?? []);
+            $stmt->execute([
+                'x'=>$item['x'],'y'=>$item['y'],'w'=>$item['w'],'h'=>$item['h'],
+                'config'=>json_encode($config, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
+                'updated'=>$now,'id'=>$id
+            ]);
         }
     });
 }
