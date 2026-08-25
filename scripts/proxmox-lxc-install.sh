@@ -296,7 +296,7 @@ Usage:
   pengulabctl update
   pengulabctl channel stable
   pengulabctl channel prerelease
-  pengulabctl version 2.9.0
+  pengulabctl version 2.9.1
   pengulabctl backup [target.tar.gz]
   pengulabctl logs
   pengulabctl restart
@@ -377,7 +377,7 @@ main() {
     1) tag="latest"; channel_label="Stable" ;;
     2) tag="prerelease"; channel_label="Pre-release" ;;
     3)
-      prompt tag "Exact Docker release tag (e.g. 2.9.0)" "2.9.0"
+      prompt tag "Exact Docker release tag (e.g. 2.9.1)" "2.9.1"
       validate_tag "$tag"
       channel_label="Pinned: $tag"
       ;;

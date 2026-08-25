@@ -35,14 +35,22 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     if ($token !== '') $headers['Authorization'] = 'Bearer ' . $token;
     if ($headers === []) throw new RuntimeException('NPMplus login succeeded but returned no usable session cookie or token.');
 
-    $hostsResponse = $http->request('GET', $base . '/api/nginx/proxy-hosts?expand=owner,access_list,certificate', [
+    $hostsResponse = $http->request('GET', $base . '/api/nginx/proxy-hosts', [
         'verify_tls' => $verify,
         'headers' => $headers,
         'timeout' => 12,
     ]);
     if ($hostsResponse['status'] < 200 || $hostsResponse['status'] >= 300) {
         if ($hostsResponse['status'] === 401 || $hostsResponse['status'] === 403) throw new RuntimeException('NPMplus session was not accepted for Proxy Hosts.');
-        throw new RuntimeException('NPMplus Proxy Hosts returned HTTP ' . $hostsResponse['status'] . '.');
+        $detail = '';
+        if (is_array($hostsResponse['json'] ?? null)) {
+            $detail = trim((string)($hostsResponse['json']['error']['message'] ?? $hostsResponse['json']['message'] ?? ''));
+        }
+        if ($detail === '') {
+            $plain = trim(strip_tags((string)($hostsResponse['body'] ?? '')));
+            if ($plain !== '' && strlen($plain) <= 220) $detail = $plain;
+        }
+        throw new RuntimeException('NPMplus Proxy Hosts returned HTTP ' . $hostsResponse['status'] . ($detail !== '' ? ': ' . $detail : '.') );
     }
     if (!is_array($hostsResponse['json'])) throw new RuntimeException('NPMplus returned invalid Proxy Host JSON.');
 

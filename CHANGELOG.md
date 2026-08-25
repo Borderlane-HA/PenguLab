@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.9.1
+
+- Fixed NPMplus Proxy Host import against current NPMplus releases.
+- Removed unnecessary Proxy Host `expand` query parameters that could trigger HTTP 500 responses.
+- Improved NPMplus API error details for troubleshooting.
+
 ## 2.9.0
 
 - Added a bundled **NPMplus** PenguHub integration.
