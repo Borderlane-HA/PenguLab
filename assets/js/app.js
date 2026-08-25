@@ -208,7 +208,11 @@
     const settingsButton = isAdmin() && ['app','homeassistant-entities','integration-summary'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
     const mobileSize = ['small','medium','large'].includes(String(widget.config?.mobile_size||'')) ? String(widget.config.mobile_size) : 'auto';
     const phoneSizeButton = isAdmin() ? `<button class="widget-mini-btn widget-mobile-size" data-id="${attr(widget.id)}" title="Größe auf Mobilgeräten">↕</button>` : '';
-    const hasCustomTitle = !!String(widget.title || '').trim();
+    const storedTitle = String(widget.title || '').trim();
+    const generatedTitle = String(widgetTitle(widget) || '').trim();
+    // Older PenguLab versions stored the automatically generated integration name in widget.title.
+    // Treat that value as a default title, not as a user-defined custom title.
+    const hasCustomTitle = !!storedTitle && !(widget.type === 'integration-summary' && storedTitle === generatedTitle) && !(widget.type === 'clock' && storedTitle === generatedTitle);
     const autoCompactHeadTypes = ['homeassistant-entities','integration-summary','clock'];
     const hideHead = autoCompactHeadTypes.includes(widget.type) && !hasCustomTitle && !state.editMode;
     const head = hideHead ? '' : `<div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${phoneSizeButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>`;

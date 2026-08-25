@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.3
+
+- Fixed integration widget headers still appearing when the title was only the automatically stored integration name.
+- Pi-hole, AdGuard Home, OPNsense, Proxmox, PBS, Zabbix, Docker, Portainer and other integration widgets now correctly hide the redundant header in normal dashboard mode.
+- Explicitly customized widget titles remain visible. RSS/News remains unchanged.
+
 ## 2.5.2
 
 - Removed redundant dashboard title bars from clock and integration widgets when no custom widget title is set.
