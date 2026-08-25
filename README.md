@@ -20,11 +20,6 @@ It is built for people who want a fast overview, useful widgets and a setup that
 - **App groups** – drag one app onto another to create a compact iPhone/iPad-style folder and keep busy dashboards tidy.
 - **Private by design** – your data stays on your own server.
 
-## Overview
-
-<p align="center">
-  <img src="docs/images/dashboard-overview.png" alt="PenguLab dashboard overview" width="100%">
-</p>
 
 ## What you can add
 
