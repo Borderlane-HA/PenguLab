@@ -261,16 +261,24 @@ SQL;
 
     private function migrateDashboardGrid(): void
     {
-        // 2.6 introduces a four-times finer vertical dashboard grid. Multiplying
-        // y/h keeps every existing widget at the same logical position while the
-        // CSS row/gap combination preserves the old pixel geometry almost exactly.
-        if ($this->meta('dashboard_grid_scale') === '4') {
+        // 2.6 introduced a four-times finer vertical grid. 2.6.1 doubles the
+        // horizontal grid from 12 to 24 columns. Multiplying x/w by two preserves
+        // the exact pixel geometry because the column/gap ratio scales evenly.
+        $verticalDone = $this->meta('dashboard_grid_scale') === '4';
+        $horizontalDone = $this->meta('dashboard_grid_columns') === '24';
+        if ($verticalDone && $horizontalDone) {
             return;
         }
-        $this->transaction(function (PDO $pdo): void {
-            $pdo->exec('UPDATE widgets SET y = y * 4, h = h * 4');
+        $this->transaction(function (PDO $pdo) use ($verticalDone, $horizontalDone): void {
+            if (!$verticalDone) {
+                $pdo->exec('UPDATE widgets SET y = y * 4, h = h * 4');
+            }
+            if (!$horizontalDone) {
+                $pdo->exec('UPDATE widgets SET x = x * 2, w = w * 2');
+            }
         });
-        $this->setMeta('dashboard_grid_scale', '4');
+        if (!$verticalDone) $this->setMeta('dashboard_grid_scale', '4');
+        if (!$horizontalDone) $this->setMeta('dashboard_grid_columns', '24');
     }
 
     private function ensureDefaults(): void

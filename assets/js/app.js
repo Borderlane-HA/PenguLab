@@ -124,8 +124,8 @@
 
   const cloneConfig = value => JSON.parse(JSON.stringify(value || {}));
   const isPhoneEditor = () => matchMedia('(max-width:760px)').matches;
-  const GRID_SCALE = 4, GRID_MIN_H = 4, GRID_MAX_H = 32;
-  const mobileOrderOf = widget => Number.isFinite(Number(widget?.config?.mobile_order)) ? Number(widget.config.mobile_order) : ((Number(widget?.y)||0)*12 + (Number(widget?.x)||0));
+  const GRID_COLS = 24, GRID_SCALE = 4, GRID_MIN_H = 4, GRID_MAX_H = 32;
+  const mobileOrderOf = widget => Number.isFinite(Number(widget?.config?.mobile_order)) ? Number(widget.config.mobile_order) : ((Number(widget?.y)||0)*GRID_COLS + (Number(widget?.x)||0));
 
   function layoutSnapshot() {
     const out = {};
@@ -203,9 +203,9 @@
   function widgetShell(widget) {
     const title = widget.title || widgetTitle(widget);
     const typeClass = `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
-    const sizeClass = widget.type === 'app' ? (widget.w <= 1 ? 'app-widget-xs' : widget.w === 2 ? 'app-widget-sm' : 'app-widget-lg') : '';
+    const sizeClass = widget.type === 'app' ? (widget.w <= 2 ? 'app-widget-xs' : widget.w <= 4 ? 'app-widget-sm' : 'app-widget-lg') : '';
     const haCount = widget.type === 'homeassistant-entities' ? (Array.isArray(widget.config?.entity_ids) ? widget.config.entity_ids.length : 0) : 0;
-    const haSizeClass = widget.type === 'homeassistant-entities' ? `${haCount===1?'ha-widget-single ':''}${widget.w<=1?'ha-widget-xs ':''}${haCount>=4||widget.w<=2?'ha-widget-dense':''}`.trim() : '';
+    const haSizeClass = widget.type === 'homeassistant-entities' ? `${haCount===1?'ha-widget-single ':''}${widget.w<=2?'ha-widget-xs ':''}${haCount>=4||widget.w<=4?'ha-widget-dense':''}`.trim() : '';
     const settingsButton = isAdmin() && ['app','homeassistant-entities','integration-summary'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
     const mobileSize = ['small','medium','large'].includes(String(widget.config?.mobile_size||'')) ? String(widget.config.mobile_size) : 'auto';
     const phoneSizeButton = isAdmin() ? `<button class="widget-mini-btn widget-mobile-size" data-id="${attr(widget.id)}" title="Größe auf Mobilgeräten">↕</button>` : '';
@@ -394,7 +394,7 @@
       const updateCount=()=>{const n=checks.filter(c=>c.checked).length;count.textContent=`${n}/8 ausgewählt`;checks.forEach(c=>c.disabled=!c.checked&&n>=8)};
       checks.forEach(c=>c.onchange=updateCount);updateCount();
       search.oninput=()=>{const q=search.value.trim().toLowerCase();$$('[data-ha-search]',modal).forEach(row=>row.hidden=!!q&&!row.dataset.haSearch.includes(q))};
-      $('#saveHaWidget',modal).onclick=async()=>{const ids=checks.filter(c=>c.checked).map(c=>c.dataset.haPick).slice(0,8);if(!ids.length){toast('Wähle mindestens eine Entität.','error');return;}const config={integration_id:integrationId,entity_ids:ids,display:$('#haWidgetDisplay',modal).value,show_icons:$('#haShowIcons',modal).checked,show_controls:$('#haShowControls',modal).checked};const title=$('#haWidgetTitle',modal).value.trim();try{if(existingWidget){const d=await api('widgets/update',{body:{id:existingWidget.id,title,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Home Assistant Widget gespeichert.');}else{closeModal();const w=ids.length===1?1:(ids.length===2?2:(ids.length<=4?3:4)),h=(ids.length<=2?1:(ids.length<=4?2:3))*GRID_SCALE;await createWidget({type:'homeassistant-entities',title,config,w,h});}}catch(e){toast(e.message,'error')}};
+      $('#saveHaWidget',modal).onclick=async()=>{const ids=checks.filter(c=>c.checked).map(c=>c.dataset.haPick).slice(0,8);if(!ids.length){toast('Wähle mindestens eine Entität.','error');return;}const config={integration_id:integrationId,entity_ids:ids,display:$('#haWidgetDisplay',modal).value,show_icons:$('#haShowIcons',modal).checked,show_controls:$('#haShowControls',modal).checked};const title=$('#haWidgetTitle',modal).value.trim();try{if(existingWidget){const d=await api('widgets/update',{body:{id:existingWidget.id,title,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Home Assistant Widget gespeichert.');}else{closeModal();const w=(ids.length===1?1:(ids.length===2?2:(ids.length<=4?3:4)))*2,h=(ids.length<=2?1:(ids.length<=4?2:3))*GRID_SCALE;await createWidget({type:'homeassistant-entities',title,config,w,h});}}catch(e){toast(e.message,'error')}};
     });
   }
 
@@ -599,7 +599,7 @@
 
   function gridMetrics(grid) {
     const style = getComputedStyle(grid); const gap = parseFloat(style.columnGap) || 16; const row = parseFloat(style.gridAutoRows) || 9.5; const rect = grid.getBoundingClientRect();
-    return { rect, gap, col: (rect.width - gap * 11) / 12, row, unitY: row + gap };
+    return { rect, gap, col: (rect.width - gap * (GRID_COLS - 1)) / GRID_COLS, row, unitY: row + gap };
   }
   const intersects = (a,b) => a.id !== b.id && a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
   function positionFree(candidate, widgets, ignoreId) { return !widgets.some(w => w.id !== ignoreId && intersects(candidate,w)); }
@@ -613,7 +613,7 @@
   }
   function overlapsAny(pos, occupied){return occupied.some(o=>intersects(pos,o));}
   function nearestSlot(source, occupied){
-    const maxX=Math.max(0,12-source.w);
+    const maxX=Math.max(0,GRID_COLS-source.w);
     const xs=Array.from({length:maxX+1},(_,x)=>x).sort((a,b)=>Math.abs(a-source.x)-Math.abs(b-source.x));
     for(let dy=0;dy<160;dy++){
       const y=Math.max(0,source.y+dy);
@@ -642,7 +642,7 @@
     const move=e=>{
       e.preventDefault?.();
       const dx=Math.round((e.clientX-sx)/(m.col+m.gap));const dy=Math.round((e.clientY-sy)/m.unitY);
-      const candidate={...original,x:Math.max(0,Math.min(12-widget.w,original.x+dx)),y:Math.max(0,original.y+dy)};
+      const candidate={...original,x:Math.max(0,Math.min(GRID_COLS-widget.w,original.x+dx)),y:Math.max(0,original.y+dy)};
       applyPositionMap(reflowPreview(widget.id,candidate,base,widgets),widgets,grid);
     };
     const up=e=>{
@@ -656,10 +656,10 @@
     const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]};
     const move=e=>{
       e.preventDefault?.();
-      const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);const minW=widget.type==='app'||widget.type==='homeassistant-entities'?1:2;
-      const candidate={...original,w:Math.max(minW,Math.min(12-original.x,original.w+dw)),h:Math.max(GRID_MIN_H,Math.min(GRID_MAX_H,original.h+dh))};
+      const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);const minW=widget.type==='app'||widget.type==='homeassistant-entities'?2:4;
+      const candidate={...original,w:Math.max(minW,Math.min(GRID_COLS-original.x,original.w+dw)),h:Math.max(GRID_MIN_H,Math.min(GRID_MAX_H,original.h+dh))};
       applyPositionMap(reflowPreview(widget.id,candidate,base,widgets),widgets,grid);
-      el.classList.toggle('app-widget-xs',widget.type==='app'&&widget.w<=1);el.classList.toggle('app-widget-sm',widget.type==='app'&&widget.w===2);el.classList.toggle('app-widget-lg',widget.type==='app'&&widget.w>=3);
+      el.classList.toggle('app-widget-xs',widget.type==='app'&&widget.w<=2);el.classList.toggle('app-widget-sm',widget.type==='app'&&widget.w>2&&widget.w<=4);el.classList.toggle('app-widget-lg',widget.type==='app'&&widget.w>=5);
     };
     const up=()=>{
       el.classList.remove('dragging');grid.classList.remove('grid-reflowing');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);
@@ -708,19 +708,19 @@
 
   function configureWidgetChoice(key) {
     closeModal();
-    if (key === 'clock' || key === 'ipmanager-summary') { createWidget({type:key,w:key==='clock'?3:4,h:2*GRID_SCALE}); return; }
+    if (key === 'clock' || key === 'ipmanager-summary') { createWidget({type:key,w:(key==='clock'?3:4)*2,h:2*GRID_SCALE}); return; }
     if (key.startsWith('integration:')) {
-      const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(integration?.type==='homeassistant'){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0],h:size[1]*GRID_SCALE});return;
+      const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(integration?.type==='homeassistant'){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0]*2,h:size[1]*GRID_SCALE});return;
     }
     if (key === 'app') {
       const opts=(state.boot.apps||[]).map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('');
-      showModal('App Shortcut','Wähle App und Darstellung.',`<div class="form-grid"><div class="field-row full"><label>App</label><select id="widgetAppId">${opts}</select></div><div class="field-row full"><label>Darstellung</label><select id="widgetAppLayout"><option value="vertical">Icon oben · Text darunter</option><option value="horizontal">Icon links · Text daneben</option><option value="auto">Automatisch nach Größe</option><option value="icon">Nur Icon</option></select></div></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value,layout=$('#widgetAppLayout',modal).value;closeModal();createWidget({type:'app',config:{app_id:id,layout},w:1,h:1*GRID_SCALE});}});return;
+      showModal('App Shortcut','Wähle App und Darstellung.',`<div class="form-grid"><div class="field-row full"><label>App</label><select id="widgetAppId">${opts}</select></div><div class="field-row full"><label>Darstellung</label><select id="widgetAppLayout"><option value="vertical">Icon oben · Text darunter</option><option value="horizontal">Icon links · Text daneben</option><option value="auto">Automatisch nach Größe</option><option value="icon">Nur Icon</option></select></div></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value,layout=$('#widgetAppLayout',modal).value;closeModal();createWidget({type:'app',config:{app_id:id,layout},w:2,h:1*GRID_SCALE});}});return;
     }
     if (key === 'note') {
-      showModal('Notiz','Kurzer Text für dein Dashboard.',`<div class="field-row"><label>Titel (optional)</label><input id="widgetTitle"></div><div class="field-row"><label>Text</label><textarea id="widgetText" placeholder="Was willst du im Blick behalten?"></textarea></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,text=$('#widgetText',modal).value;closeModal();createWidget({type:'note',title,config:{text},w:3,h:2*GRID_SCALE});}});return;
+      showModal('Notiz','Kurzer Text für dein Dashboard.',`<div class="field-row"><label>Titel (optional)</label><input id="widgetTitle"></div><div class="field-row"><label>Text</label><textarea id="widgetText" placeholder="Was willst du im Blick behalten?"></textarea></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,text=$('#widgetText',modal).value;closeModal();createWidget({type:'note',title,config:{text},w:6,h:2*GRID_SCALE});}});return;
     }
     if (key === 'rss') {
-      showModal('RSS / Atom Feed','Feed wird serverseitig geladen.',`<div class="field-row"><label>Titel</label><input id="widgetTitle" placeholder="Tech News"></div><div class="field-row"><label>Feed URL</label><input id="feedUrl" type="url" placeholder="https://example.org/feed.xml"></div><div class="field-row"><label>Max. Meldungen</label><input id="feedLimit" type="number" min="1" max="15" value="6"></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,feed_url=$('#feedUrl',modal).value,limit=Number($('#feedLimit',modal).value)||6;if(!feed_url){toast('Feed URL fehlt.','error');return;}closeModal();createWidget({type:'rss',title,config:{feed_url,limit,verify_tls:true},w:6,h:3*GRID_SCALE});}});
+      showModal('RSS / Atom Feed','Feed wird serverseitig geladen.',`<div class="field-row"><label>Titel</label><input id="widgetTitle" placeholder="Tech News"></div><div class="field-row"><label>Feed URL</label><input id="feedUrl" type="url" placeholder="https://example.org/feed.xml"></div><div class="field-row"><label>Max. Meldungen</label><input id="feedLimit" type="number" min="1" max="15" value="6"></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,feed_url=$('#feedUrl',modal).value,limit=Number($('#feedLimit',modal).value)||6;if(!feed_url){toast('Feed URL fehlt.','error');return;}closeModal();createWidget({type:'rss',title,config:{feed_url,limit,verify_tls:true},w:12,h:3*GRID_SCALE});}});
     }
   }
 
@@ -749,7 +749,7 @@
     $$('[data-app-category]').forEach(b=>b.onclick=()=>{state.appCategory=b.dataset.appCategory;renderApps()});
     $$('[data-app-view]').forEach(b=>b.onclick=()=>{state.appView=b.dataset.appView;localStorage.setItem('pengulab-app-view',state.appView);renderApps()});
     $$('[data-edit-app]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();openAppModal(all.find(a=>a.id===b.dataset.editApp))});
-    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget,layout:'vertical'},w:1,h:1*GRID_SCALE})});
+    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget,layout:'vertical'},w:2,h:1*GRID_SCALE})});
   }
 
   function openAppModal(app=null) {
@@ -779,7 +779,7 @@
     $('#addIntegration')?.addEventListener('click',()=>openIntegrationTypePicker());
     $$('[data-test-integration]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Teste…';try{const d=await api('integrations/test',{body:{id:b.dataset.testIntegration}});state.boot.integrations=d.integrations;renderIntegrations();toast('Verbindung erfolgreich.');}catch(e){b.disabled=false;b.textContent='Testen';toast(e.message,'error')}});
     $$('[data-edit-integration]').forEach(b=>b.onclick=()=>openIntegrationModal(integrations.find(i=>i.id===b.dataset.editIntegration)));
-    $$('[data-widget-integration]').forEach(b=>{b.onclick=()=>{const i=integrations.find(x=>x.id===b.dataset.widgetIntegration);if(!i)return;if(i.type==='homeassistant'){openHomeAssistantWidgetModal(i.id);return;}const cat=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===i?.type);const sz=cat?.defaultSize||[4,2];createWidget({type:'integration-summary',title:i?.name||'',config:{integration_id:i.id},w:sz[0],h:sz[1]*GRID_SCALE});}});
+    $$('[data-widget-integration]').forEach(b=>{b.onclick=()=>{const i=integrations.find(x=>x.id===b.dataset.widgetIntegration);if(!i)return;if(i.type==='homeassistant'){openHomeAssistantWidgetModal(i.id);return;}const cat=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===i?.type);const sz=cat?.defaultSize||[4,2];createWidget({type:'integration-summary',title:i?.name||'',config:{integration_id:i.id},w:sz[0]*2,h:sz[1]*GRID_SCALE});}});
   }
 
   function openIntegrationTypePicker(){const types=state.boot.integrationTypes||[];showModal('Verbindung hinzufügen','Installierte PenguHub-Connectoren.',`<div class="widget-picker">${types.map(t=>`<button class="widget-choice" data-integration-type="${attr(t.type)}"><strong>${esc(t.name)}</strong><span>${esc(t.description||'')}</span></button>`).join('')}</div>`,'',modal=>{$$('[data-integration-type]',modal).forEach(b=>b.onclick=()=>{closeModal();openIntegrationModal(null,b.dataset.integrationType)})});}
@@ -790,8 +790,8 @@
     const widgetOptions=(info.widget_options||[]).map(o=>integrationWidgetOptionHtml(o,existing)).join('');
     const widgetSection=widgetOptions?`<div class="modal-section-title">Widget-Inhalte</div><div class="integration-widget-options">${widgetOptions}</div>`:'';
     showModal(existing?'Verbindung bearbeiten':`${info.name} verbinden`,'Zugangsdaten werden serverseitig verschlüsselt gespeichert.',`<div class="field-row"><label>Name</label><input id="integrationName" value="${attr(existing?.name||info.name)}"></div>${fields}${widgetSection}`,`<button class="btn" data-close-modal>Abbrechen</button>${existing?`<button class="btn danger" id="deleteIntegration">Löschen</button>`:''}<button class="btn primary" id="saveIntegration">Speichern</button>`,modal=>{
-      $('#saveIntegration',modal).onclick=async()=>{const payload={id:existing?.id,type,name:$('#integrationName',modal).value,secrets:{},config:{...(existing?.config||{})}};for(const f of info.fields||[]){const el=$(`[data-field="${CSS.escape(f.key)}"]`,modal);if(!el)continue;let value=f.type==='boolean'?el.checked:el.value;if(f.secret)payload.secrets[f.key]=value;else payload[f.key]=value;}for(const o of info.widget_options||[]){const el=$(`[data-widget-option="${CSS.escape(o.key)}"]`,modal);if(!el)continue;payload.config[o.key]=o.type==='boolean'?el.checked:(o.type==='number'?Number(el.value):el.value);}try{const d=await api('integrations/save',{body:payload});state.boot.integrations=d.integrations;closeModal();renderIntegrations();toast('Integration gespeichert.');}catch(e){toast(e.message,'error')}};
-      $('#deleteIntegration',modal)?.addEventListener('click',async()=>{if(!confirm('Integration löschen?'))return;try{const d=await api('integrations/delete',{body:{id:existing.id}});state.boot.integrations=d.integrations;closeModal();renderIntegrations();toast('Integration gelöscht.');}catch(e){toast(e.message,'error')}});
+      $('#saveIntegration',modal).onclick=async()=>{const payload={id:existing?.id,type,name:$('#integrationName',modal).value,secrets:{},config:{...(existing?.config||{})}};for(const f of info.fields||[]){const el=$(`[data-field="${CSS.escape(f.key)}"]`,modal);if(!el)continue;let value=f.type==='boolean'?el.checked:el.value;if(f.secret)payload.secrets[f.key]=value;else payload[f.key]=value;}for(const o of info.widget_options||[]){const el=$(`[data-widget-option="${CSS.escape(o.key)}"]`,modal);if(!el)continue;payload.config[o.key]=o.type==='boolean'?el.checked:(o.type==='number'?Number(el.value):el.value);}try{const d=await api('integrations/save',{body:payload});state.boot.integrations=d.integrations;closeModal();render();toast('Integration gespeichert.');}catch(e){toast(e.message,'error')}};
+      $('#deleteIntegration',modal)?.addEventListener('click',async()=>{if(!confirm('Integration löschen?'))return;try{const d=await api('integrations/delete',{body:{id:existing.id}});state.boot.integrations=d.integrations;closeModal();render();toast('Integration gelöscht.');}catch(e){toast(e.message,'error')}});
       if(type==='opnsense')loadOpnsenseInterfaces(modal,existing);
     });
   }
@@ -853,7 +853,7 @@
 
   function renderSettings() {
     const s=state.boot.settings||{},user=state.boot.user||{},admin=isAdmin();
-    const account=`<section class="section-card settings-card"><h3>Benutzerkonto</h3><p>Angemeldet als <strong>${esc(user.username||'')}</strong> · ${admin?'Administrator':'Benutzer'}</p>${state.boot.defaultPassword?'<div class="security-warning"><strong>Standardpasswort aktiv</strong><span>Bitte <code>admin</code> jetzt durch ein eigenes Passwort ersetzen.</span></div>':''}<div class="field-row"><label>Aktuelles Passwort</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="field-row"><label>Neues Passwort</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8" placeholder="mindestens 8 Zeichen"></div><div class="settings-actions"><button class="btn primary" id="changePassword">Passwort ändern</button><a class="btn" href="?logout=1">Abmelden</a></div></section>`;
+    const account=`<section class="section-card settings-card"><h3>Benutzerkonto</h3><p>Angemeldet als <strong>${esc(user.username||'')}</strong> · ${admin?'Administrator':'Benutzer'}</p>${state.boot.defaultPassword?'<div class="security-warning"><strong>Standardpasswort aktiv</strong><span>Bitte <code>admin</code> jetzt durch ein eigenes Passwort ersetzen.</span></div>':''}<div class="field-row"><label>Aktuelles Passwort</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="field-row"><label>Neues Passwort</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8" placeholder="mindestens 8 Zeichen"></div><div class="settings-actions"><button class="btn primary" id="changePassword">Passwort ändern</button><a class="btn" href="?logout=1" onclick="return confirm('Möchtest du dich wirklich abmelden?')">Abmelden</a></div></section>`;
     const appearance=admin?`<section class="section-card settings-card"><h3>Appearance</h3><p>Theme und Dashboard-Titel gelten für die gesamte PenguLab-Instanz.</p><div class="segmented" id="themeSegment"><button data-theme-value="system" class="${s.theme==='system'?'active':''}">System</button><button data-theme-value="light" class="${s.theme==='light'?'active':''}">Light</button><button data-theme-value="dark" class="${s.theme==='dark'?'active':''}">Dark</button></div><div class="field-row" style="margin-top:18px"><label>Dashboard Titel</label><input id="dashboardTitle" value="${attr(s.dashboard_title||'My Homelab')}"></div><button class="btn primary" id="saveGeneral">Speichern</button></section>`:'';
     const backup=admin?`<section class="section-card settings-card"><h3>Backup & Migration</h3><p>JSON-Export enthält Apps, Layout und Konfiguration, aber keine Passwörter, Benutzer-Hashes oder Integration-Secrets. Für ein vollständiges Backup das gesamte <code>data/</code>-Verzeichnis sichern.</p><div class="settings-actions"><button class="btn" id="exportBtn">JSON exportieren</button><label class="btn" for="importFile">JSON importieren</label><input id="importFile" type="file" accept="application/json" hidden></div><div class="setting-line" style="margin-top:15px"><span class="setting-copy"><strong>Database</strong><p>SQLite · /data/pengulab.sqlite</p></span><span class="badge installed">Active</span></div><div class="setting-line"><span class="setting-copy"><strong>Remember Login</strong><p>90 Tage · HttpOnly Cookie · serverseitig gehashter Token</p></span><span class="badge installed">Active</span></div></section>`:'';
     const users=admin?usersSettingsHtml():'';

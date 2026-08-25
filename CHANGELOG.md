@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.1
+
+- Doubled the desktop/tablet dashboard grid from 12 to 24 columns for finer horizontal resizing while preserving existing layouts.
+- Fixed integration settings opened from dashboard widgets returning/rendering the Integrations page after save.
+- Simplified the top-bar logout action to icon-only and added a confirmation prompt.
+- Added automatic horizontal grid migration and portable-import scaling for layouts created before 2.6.1.
+
 ## 2.6.0
 
 - Made the vertical dashboard grid four times finer while preserving existing widget positions and sizes during migration.
