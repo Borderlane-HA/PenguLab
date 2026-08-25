@@ -35,6 +35,7 @@ final class Database
 
         $this->migrateSchema();
         $this->migrateLegacy();
+        $this->migrateDashboardGrid();
         $this->ensureDefaults();
     }
 
@@ -255,7 +256,21 @@ CREATE TABLE IF NOT EXISTS remember_tokens (
 CREATE INDEX IF NOT EXISTS idx_remember_tokens_user ON remember_tokens(user_id);
 SQL;
         $this->pdo->exec($sql);
-        $this->setMeta('schema_version', '4');
+        $this->setMeta('schema_version', '5');
+    }
+
+    private function migrateDashboardGrid(): void
+    {
+        // 2.6 introduces a four-times finer vertical dashboard grid. Multiplying
+        // y/h keeps every existing widget at the same logical position while the
+        // CSS row/gap combination preserves the old pixel geometry almost exactly.
+        if ($this->meta('dashboard_grid_scale') === '4') {
+            return;
+        }
+        $this->transaction(function (PDO $pdo): void {
+            $pdo->exec('UPDATE widgets SET y = y * 4, h = h * 4');
+        });
+        $this->setMeta('dashboard_grid_scale', '4');
     }
 
     private function ensureDefaults(): void

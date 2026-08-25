@@ -16,7 +16,7 @@
       {"key":"base_url","label":"Portainer URL","type":"url","placeholder":"https://portainer.local:9443","required":true},
       {"key":"api_key","label":"API Access Token","type":"password","secret":true,"required":true},
       {"key":"endpoint_id","label":"Environment ID (optional)","type":"text","placeholder":"Leer = alle erreichbaren Docker Environments","required":false},
-      {"key":"verify_tls","label":"Verify TLS certificate","type":"boolean","default":true}
+      {"key":"verify_tls","label":"Verify TLS certificate","type":"boolean","default":false}
     ],
     "widget_options": [
       {"key":"refresh_interval","label":"Live-Aktualisierung","type":"select","default":"30","options":[

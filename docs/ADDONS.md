@@ -43,7 +43,7 @@ A package can declare:
     "fields": [
       {"key": "base_url", "label": "URL", "type": "url", "required": true},
       {"key": "token", "label": "API token", "type": "password", "secret": true, "required": true},
-      {"key": "verify_tls", "label": "Verify TLS certificate", "type": "boolean", "default": true}
+      {"key": "verify_tls", "label": "Verify TLS certificate", "type": "boolean", "default": false}
     ]
   }
 }

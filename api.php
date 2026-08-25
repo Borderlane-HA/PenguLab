@@ -196,7 +196,7 @@ try {
                 throw new RuntimeException('OPNsense integration not found.');
             }
             $result = $integrations->execute($id, 'summary');
-            json_response(['ok'=>true,'interfaces'=>is_array($result['interfaces'] ?? null) ? $result['interfaces'] : []]);
+            json_response(['ok'=>true,'interfaces'=>is_array($result['interfaces'] ?? null) ? $result['interfaces'] : [],'gateways'=>is_array($result['gateways'] ?? null) ? $result['gateways'] : []]);
 
         case 'homeassistant/entities':
             require_method('POST');
@@ -461,7 +461,7 @@ function save_app(Database $db, array $input): array
     $stmt->execute(compact('id','name','url','description','category','image','position','created') + ['updated' => $now]);
 
     if (!$existing && !empty($input['add_to_dashboard'])) {
-        create_widget($db, null, ['type' => 'app', 'config' => ['app_id' => $id, 'layout' => 'vertical'], 'w' => 1, 'h' => 1]);
+        create_widget($db, null, ['type' => 'app', 'config' => ['app_id' => $id, 'layout' => 'vertical'], 'w' => 1, 'h' => 4]);
     }
 
     $stmt = $db->pdo()->prepare('SELECT * FROM apps WHERE id=:id');
@@ -497,7 +497,7 @@ function create_widget(Database $db, $addons, array $input): array
     $title = mb_substr(trim(strip_tags((string)($input['title'] ?? ''))), 0, 100);
     $minW = in_array($type, ['app','homeassistant-entities'], true) ? 1 : 2;
     $w = max($minW, min(12, (int)($input['w'] ?? 3)));
-    $h = max(1, min(8, (int)($input['h'] ?? 2)));
+    $h = max(4, min(32, (int)($input['h'] ?? 8)));
     $x = max(0, min(11, (int)($input['x'] ?? 0)));
     $maxY = (int)$db->pdo()->query('SELECT COALESCE(MAX(y+h),0) FROM widgets')->fetchColumn();
     $y = max(0, (int)($input['y'] ?? $maxY));
@@ -556,7 +556,7 @@ function save_layout(Database $db, mixed $items): void
 
         $minW = in_array(($layout[$id]['type'] ?? ''), ['app','homeassistant-entities'], true) ? 1 : 2;
         $w = max($minW, min(12, (int)($item['w'] ?? $layout[$id]['w'])));
-        $h = max(1, min(8, (int)($item['h'] ?? $layout[$id]['h'])));
+        $h = max(4, min(32, (int)($item['h'] ?? $layout[$id]['h'])));
         $x = max(0, min(12-$w, (int)($item['x'] ?? $layout[$id]['x'])));
         $y = max(0, (int)($item['y'] ?? $layout[$id]['y']));
         $layout[$id] = array_merge($layout[$id], ['x'=>$x,'y'=>$y,'w'=>$w,'h'=>$h]);
@@ -834,6 +834,8 @@ function import_data(array $ctx, mixed $data): void
 
     $db = $ctx['db'];
     $addons = $ctx['addons'];
+    $importVersion = trim((string)($data['version'] ?? ''));
+    $importGridScale = ($importVersion !== '' && version_compare(preg_replace('/[^0-9.].*$/', '', $importVersion) ?: '0.0.0', '2.6.0', '>=')) ? 1 : 4;
 
     foreach (($data['enabled_addons'] ?? []) as $addonId) {
         $addonId = trim((string)$addonId);
@@ -845,7 +847,7 @@ function import_data(array $ctx, mixed $data): void
         $addons->install('ipmanager');
     }
 
-    $db->transaction(function($pdo) use ($data,$db): void {
+    $db->transaction(function($pdo) use ($data,$db,$importGridScale): void {
         if (is_array($data['settings'] ?? null)) {
             foreach (['theme','language','sidebar_compact','dashboard_title'] as $key) {
                 if (array_key_exists($key, $data['settings'])) $db->setSetting($key, $data['settings'][$key]);
@@ -866,9 +868,11 @@ function import_data(array $ctx, mixed $data): void
                 $type=(string)($widget['type']??'');
                 $minW=in_array($type,['app','homeassistant-entities'],true)?1:2;
                 $w=max($minW,min(12,(int)($widget['w']??3)));
-                $h=max(1,min(8,(int)($widget['h']??2)));
+                $rawH=(int)($widget['h']??($importGridScale===4?2:8));
+                $rawY=(int)($widget['y']??0);
+                $h=max(4,min(32,$rawH*$importGridScale));
                 $x=max(0,min(12-$w,(int)($widget['x']??0)));
-                $y=max(0,(int)($widget['y']??0));
+                $y=max(0,$rawY*$importGridScale);
                 $title=mb_substr(trim(strip_tags((string)($widget['title']??''))),0,100);
                 $config=is_array($widget['config']??null)?$widget['config']:[];
                 $stmt=$pdo->prepare('INSERT INTO widgets(id,dashboard_id,type,title,x,y,w,h,config_json,created_at,updated_at) VALUES(:id,:dashboard,:type,:title,:x,:y,:w,:h,:config,:created,:updated)');

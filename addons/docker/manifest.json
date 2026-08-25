@@ -16,7 +16,7 @@
       {"key":"base_url","label":"Docker API URL","type":"url","placeholder":"https://docker.local:2376","required":true},
       {"key":"username","label":"Basic-Auth Benutzer (optional)","type":"text","placeholder":"monitoring","required":false},
       {"key":"password","label":"Basic-Auth Passwort (optional)","type":"password","secret":true,"required":false},
-      {"key":"verify_tls","label":"Verify TLS certificate","type":"boolean","default":true}
+      {"key":"verify_tls","label":"Verify TLS certificate","type":"boolean","default":false}
     ],
     "widget_options": [
       {"key":"refresh_interval","label":"Live-Aktualisierung","type":"select","default":"30","options":[

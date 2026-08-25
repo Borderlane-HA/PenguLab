@@ -124,6 +124,7 @@
 
   const cloneConfig = value => JSON.parse(JSON.stringify(value || {}));
   const isPhoneEditor = () => matchMedia('(max-width:760px)').matches;
+  const GRID_SCALE = 4, GRID_MIN_H = 4, GRID_MAX_H = 32;
   const mobileOrderOf = widget => Number.isFinite(Number(widget?.config?.mobile_order)) ? Number(widget.config.mobile_order) : ((Number(widget?.y)||0)*12 + (Number(widget?.x)||0));
 
   function layoutSnapshot() {
@@ -216,7 +217,7 @@
     const autoCompactHeadTypes = ['homeassistant-entities','integration-summary','clock'];
     const hideHead = autoCompactHeadTypes.includes(widget.type) && !hasCustomTitle && !state.editMode;
     const head = hideHead ? '' : `<div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${phoneSizeButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>`;
-    return `<section class="widget ${typeClass} ${sizeClass} ${haSizeClass} mobile-size-${mobileSize} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||2};--mobile-order:${mobileOrderOf(widget)}">
+    return `<section class="widget ${typeClass} ${sizeClass} ${haSizeClass} mobile-size-${mobileSize} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||8};--mobile-order:${mobileOrderOf(widget)}">
       ${head}
       <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
     </section>`;
@@ -306,7 +307,7 @@
       if (!app) { body.innerHTML = '<div class="widget-error">App wurde entfernt.</div>'; return; }
       const size = widget.w <= 1 ? 'xs' : widget.w === 2 ? 'sm' : 'lg';
       const requested = widget.config?.layout || 'auto';
-      const layout = requested === 'auto' ? (widget.w <= 2 ? 'vertical' : (widget.h >= 2 && widget.w <= 3 ? 'vertical' : 'horizontal')) : requested;
+      const layout = requested === 'auto' ? (widget.w <= 2 ? 'vertical' : (widget.h >= 8 && widget.w <= 3 ? 'vertical' : 'horizontal')) : requested;
       body.innerHTML = `<a class="app-widget app-widget-${size} app-layout-${attr(layout)}" href="${attr(app.url)}" target="_blank" rel="noopener" title="${attr(app.name)} öffnen">${appIcon(app)}<div class="app-widget-copy"><div class="app-widget-name">${esc(app.name)}</div><div class="app-widget-meta">${esc(app.category || hostOf(app.url))}</div></div><span class="app-widget-open" aria-hidden="true">↗</span></a>`;
       return;
     }
@@ -358,7 +359,7 @@
   }
 
   function homeAssistantWidgetHtml(widget,data){
-    const entities=data.entities||[];const requestedDisplay=data.display||widget.config?.display||'auto';const display=requestedDisplay==='auto'?((widget.w<=2||widget.h<=1)?'compact':'tiles'):requestedDisplay;const icons=data.show_icons!==false;const controls=data.show_controls!==false;
+    const entities=data.entities||[];const requestedDisplay=data.display||widget.config?.display||'auto';const display=requestedDisplay==='auto'?((widget.w<=2||widget.h<=4)?'compact':'tiles'):requestedDisplay;const icons=data.show_icons!==false;const controls=data.show_controls!==false;
     if(!entities.length)return '<div class="widget-loading">Keine Entitäten ausgewählt.</div>';
     return `<div class="ha-entity-grid ha-display-${attr(display)}">${entities.map(e=>{
       const unavailable=['unavailable','unknown'].includes(String(e.state));const numeric=Number(e.state);const percent=e.unit==='%'&&Number.isFinite(numeric);
@@ -393,7 +394,7 @@
       const updateCount=()=>{const n=checks.filter(c=>c.checked).length;count.textContent=`${n}/8 ausgewählt`;checks.forEach(c=>c.disabled=!c.checked&&n>=8)};
       checks.forEach(c=>c.onchange=updateCount);updateCount();
       search.oninput=()=>{const q=search.value.trim().toLowerCase();$$('[data-ha-search]',modal).forEach(row=>row.hidden=!!q&&!row.dataset.haSearch.includes(q))};
-      $('#saveHaWidget',modal).onclick=async()=>{const ids=checks.filter(c=>c.checked).map(c=>c.dataset.haPick).slice(0,8);if(!ids.length){toast('Wähle mindestens eine Entität.','error');return;}const config={integration_id:integrationId,entity_ids:ids,display:$('#haWidgetDisplay',modal).value,show_icons:$('#haShowIcons',modal).checked,show_controls:$('#haShowControls',modal).checked};const title=$('#haWidgetTitle',modal).value.trim();try{if(existingWidget){const d=await api('widgets/update',{body:{id:existingWidget.id,title,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Home Assistant Widget gespeichert.');}else{closeModal();const w=ids.length===1?1:(ids.length===2?2:(ids.length<=4?3:4)),h=ids.length<=2?1:(ids.length<=4?2:3);await createWidget({type:'homeassistant-entities',title,config,w,h});}}catch(e){toast(e.message,'error')}};
+      $('#saveHaWidget',modal).onclick=async()=>{const ids=checks.filter(c=>c.checked).map(c=>c.dataset.haPick).slice(0,8);if(!ids.length){toast('Wähle mindestens eine Entität.','error');return;}const config={integration_id:integrationId,entity_ids:ids,display:$('#haWidgetDisplay',modal).value,show_icons:$('#haShowIcons',modal).checked,show_controls:$('#haShowControls',modal).checked};const title=$('#haWidgetTitle',modal).value.trim();try{if(existingWidget){const d=await api('widgets/update',{body:{id:existingWidget.id,title,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Home Assistant Widget gespeichert.');}else{closeModal();const w=ids.length===1?1:(ids.length===2?2:(ids.length<=4?3:4)),h=(ids.length<=2?1:(ids.length<=4?2:3))*GRID_SCALE;await createWidget({type:'homeassistant-entities',title,config,w,h});}}catch(e){toast(e.message,'error')}};
     });
   }
 
@@ -425,6 +426,7 @@
   }
   function sparkline(values,cls=''){let nums=(values||[]).filter(Number.isFinite);if(!nums.length)return `<div class="sparkline-empty">Startet…</div>`;if(nums.length===1)nums=[nums[0],nums[0]];const min=Math.min(...nums),max=Math.max(...nums),range=Math.max(max-min,1);const pts=nums.map((v,i)=>`${(i/(nums.length-1))*100},${28-((v-min)/range)*24}`).join(' ');return `<svg class="sparkline ${attr(cls)}" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" vector-effect="non-scaling-stroke"/></svg>`;}
   function fmtRate(v){const n=Number(v||0);if(n>=125000000)return `${fmt(n*8/1e9)} Gbit/s`;if(n>=125000)return `${fmt(n*8/1e6)} Mbit/s`;if(n>=125)return `${fmt(n*8/1e3)} kbit/s`;return `${fmt(n*8)} bit/s`;}
+  function fmtBytes(v){const n=Number(v);if(!Number.isFinite(n)||n<0)return '—';if(n>=1099511627776)return `${fmt(n/1099511627776)} TB`;if(n>=1073741824)return `${fmt(n/1073741824)} GB`;if(n>=1048576)return `${fmt(n/1048576)} MB`;if(n>=1024)return `${fmt(n/1024)} KB`;return `${fmt(n)} B`;}
   function fmtLatency(v){const raw=String(v??'').trim();if(!raw||raw==='~')return '';if(/ms$/i.test(raw))return raw;const n=Number(raw);return Number.isFinite(n)?`${fmt(n)} ms`:raw;}
   function fmtHandshake(v){if(v===null||v===undefined||v==='')return 'kein Handshake';const raw=String(v).trim();const n=Number(raw);if(Number.isFinite(n)&&n>1000000000){const sec=Math.max(0,Math.floor(Date.now()/1000-n));if(sec<60)return `vor ${sec}s`;if(sec<3600)return `vor ${Math.floor(sec/60)} Min`;if(sec<86400)return `vor ${Math.floor(sec/3600)} Std`;return `vor ${Math.floor(sec/86400)} Tg`;}return raw;}
 
@@ -434,7 +436,8 @@
       const active = summary.protection !== false;
       const showStats=integrationOption(integration,'show_stats',true),showGraph=integrationOption(integration,'show_graph',true),showControls=integrationOption(integration,'show_controls',true),showClients=type==='pihole'&&integrationOption(integration,'show_clients',true),showRecent=integrationOption(integration,'show_recent_blocked',false);
       const h=historyBucket(`${integration.id}:dns`);const graph=showGraph?`<div class="mini-graph-grid"><div><div class="mini-graph-label"><span>Queries/min</span><strong>${h.a.length?fmt(h.a.at(-1)):''}</strong></div>${sparkline(h.a,'queries')}</div><div><div class="mini-graph-label"><span>Blocked/min</span><strong>${h.b.length?fmt(h.b.at(-1)):''}</strong></div>${sparkline(h.b,'blocked')}</div></div>`:'';
-      const metrics=showStats?`<div class="metric-grid dns-metrics"><div class="metric"><div class="metric-label">Queries</div><div class="metric-value">${fmt(summary.queries)}</div></div><div class="metric"><div class="metric-label">Blocked</div><div class="metric-value">${fmt(summary.blocked_percent)}%</div></div><div class="metric"><div class="metric-label">Status</div><div class="metric-value">${active ? 'Active' : 'Paused'}</div></div>${showClients?`<div class="metric"><div class="metric-label">Clients</div><div class="metric-value">${fmt(summary.clients)}</div></div>`:''}</div>`:'';
+      const metricItems=[];if(showStats){metricItems.push(['Queries',fmt(summary.queries)]);metricItems.push(['Blocked',`${fmt(summary.blocked_percent)}%`]);metricItems.push(['Status',active?'Active':'Paused']);if(showClients)metricItems.push(['Clients',fmt(summary.clients)]);}
+      const metrics=showStats?`<div class="metric-grid dns-metrics dns-metrics-${metricItems.length}" style="--dns-columns:${Math.max(1,metricItems.length)}">${metricItems.map(([label,value])=>`<div class="metric"><div class="metric-label">${esc(label)}</div><div class="metric-value">${esc(String(value))}</div></div>`).join('')}</div>`:'';
       const recentRows=Array.isArray(summary.recent_blocked)?summary.recent_blocked:[];
       const recent=showRecent?`<div class="recent-blocked"><div class="recent-blocked-head"><span>Letzte Blockierungen</span>${summary.recent_blocked_error?'<small>Query-Log nicht verfügbar</small>':''}</div>${recentRows.length?recentRows.map(row=>`<div class="recent-blocked-row"><span class="recent-blocked-domain" title="${attr(row.domain||'')}">${esc(row.domain||'')}</span><span class="recent-blocked-time">${esc(fmtTime(row.time))}</span></div>`).join(''):`<div class="recent-blocked-empty">${summary.recent_blocked_error?'Keine Daten verfügbar.':'Noch keine Blockierungen im geladenen Zeitraum.'}</div>`}</div>`:'';
       const controls=showControls?`<div class="service-actions"><button class="service-action ${active?'':'primary'}" data-integration-action="protection_enable" ${active?'disabled':''}>Fortsetzen</button><button class="service-action" data-integration-action="protection_pause_300">5 Min Pause</button><button class="service-action danger" data-integration-action="protection_disable" ${!active?'disabled':''}>Anhalten</button></div>`:'';
@@ -442,17 +445,44 @@
     }
     if (type === 'opnsense') {
       const cfg=integration.config||{}, metrics=[];
-      if(integrationOption(integration,'show_system',true))metrics.push(['Firewall','Online']);
-      if(integrationOption(integration,'show_gateway',true)&&summary.gateway){const g=summary.gateway;metrics.push(['Gateway',g.status||'unknown']);const latency=fmtLatency(g.delay);if(latency)metrics.push(['Latenz',latency]);}
-      if(integrationOption(integration,'show_memory',true)&&summary.memory_percent!==null&&summary.memory_percent!==undefined)metrics.push(['RAM',`${fmt(summary.memory_percent)}%`]);
-      const wgEnabled=integrationOption(integration,'show_wireguard',false)&&summary.wireguard?.available;
+      const enabled=(key,def=false)=>integrationOption(integration,key,def);
+      if(enabled('show_system',true))metrics.push(['Firewall','Online']);
+      if(enabled('show_gateway',true)&&summary.gateway){
+        const g=summary.gateway;metrics.push(['Gateway',g.status||'unknown']);
+        const latency=fmtLatency(g.delay);if(latency)metrics.push(['Latenz',latency]);
+        if(enabled('show_gateway_loss',false)){
+          const loss=String(g.loss??'').trim();if(loss&&loss!=='~')metrics.push(['Paketverlust',/%$/.test(loss)?loss:`${loss}%`]);
+          const jitter=fmtLatency(g.stddev);if(jitter)metrics.push(['RTT Δ',jitter]);
+        }
+      }
+      if(enabled('show_cpu',false)&&summary.cpu_percent!==null&&summary.cpu_percent!==undefined)metrics.push(['CPU',`${fmt(summary.cpu_percent)}%`]);
+      if(enabled('show_memory',false)&&summary.memory_percent!==null&&summary.memory_percent!==undefined)metrics.push(['RAM',`${fmt(summary.memory_percent)}%`]);
+      if(enabled('show_disk',false)&&summary.disk_percent!==null&&summary.disk_percent!==undefined)metrics.push(['Speicher',`${fmt(summary.disk_percent)}%`]);
+      if(enabled('show_temperature',false)&&summary.temperature?.value!==null&&summary.temperature?.value!==undefined)metrics.push(['Temperatur',`${fmt(summary.temperature.value)} °C`]);
+      if(enabled('show_uptime',false)&&summary.uptime)metrics.push(['Uptime',summary.uptime]);
+      if(enabled('show_firewall_states',false)&&summary.firewall_states){const fs=summary.firewall_states;metrics.push(['States',fs.limit?`${fmt(fs.current)}/${fmt(fs.limit)}`:fmt(fs.current)]);}
+      const wgEnabled=enabled('show_wireguard',false)&&summary.wireguard?.available;
       if(wgEnabled){const wg=summary.wireguard||{};const total=Number(wg.online||0)+Number(wg.stale||0)+Number(wg.offline||0);metrics.push(['WireGuard',total?`${fmt(wg.online||0)}/${fmt(total)} online`:(wg.running?'Online':'Offline')]);}
-      const trafficEnabled=integrationOption(integration,'show_traffic',true)&&summary.traffic;const h=historyBucket(`${integration.id}:traffic`);const rx=h.a.length?h.a.at(-1):null,tx=h.b.length?h.b.at(-1):null;
-      const traffic=trafficEnabled?`<div class="opn-traffic"><div class="mini-graph-label"><span>${esc(summary.traffic.label||summary.traffic.interface||cfg.traffic_interface||'WAN')} Traffic</span><strong>${rx===null||tx===null?'Messung startet…':`↓ ${fmtRate(rx)} · ↑ ${fmtRate(tx)}`}</strong></div><div class="traffic-sparks">${sparkline(h.a,'rx')}${sparkline(h.b,'tx')}</div></div>`:'';
+
+      const trafficEnabled=enabled('show_traffic',true)&&summary.traffic;const h=historyBucket(`${integration.id}:traffic`);const rx=h.a.length?h.a.at(-1):null,tx=h.b.length?h.b.at(-1):null;
+      const trafficErrors=trafficEnabled&&enabled('show_traffic_errors',false)?`<div class="opn-traffic-meta"><span>RX Fehler <b>${fmt(summary.traffic.rx_errors||0)}</b></span><span>TX Fehler <b>${fmt(summary.traffic.tx_errors||0)}</b></span><span>Drops <b>${fmt(summary.traffic.drops||0)}</b></span>${Number(summary.traffic.collisions||0)?`<span>Kollisionen <b>${fmt(summary.traffic.collisions)}</b></span>`:''}</div>`:'';
+      const traffic=trafficEnabled?`<div class="opn-traffic"><div class="mini-graph-label"><span>${esc(summary.traffic.label||summary.traffic.interface||cfg.traffic_interface||'WAN')} Traffic</span><strong>${rx===null||tx===null?'Messung startet…':`↓ ${fmtRate(rx)} · ↑ ${fmtRate(tx)}`}</strong></div><div class="traffic-sparks">${sparkline(h.a,'rx')}${sparkline(h.b,'tx')}</div>${trafficErrors}</div>`:'';
+
       const peerLimit=Math.max(1,Math.min(15,Number(cfg.wireguard_peer_limit||5)));
-      const peers=wgEnabled&&integrationOption(integration,'show_wireguard_peers',true)&&Array.isArray(summary.wireguard?.peers)?summary.wireguard.peers.slice(0,peerLimit):[];
-      const peerList=wgEnabled&&integrationOption(integration,'show_wireguard_peers',true)?`<div class="opn-wireguard"><div class="opn-wireguard-head"><span>WireGuard Peers</span><strong>${fmt(summary.wireguard?.online||0)} online · ${fmt(summary.wireguard?.stale||0)} stale · ${fmt(summary.wireguard?.offline||0)} offline</strong></div>${peers.length?`<div class="opn-peer-list">${peers.map(p=>`<div class="opn-peer"><span class="opn-peer-dot ${attr(p.status||'offline')}"></span><span class="opn-peer-name" title="${attr(`${p.interface||''} ${p.allowed_ips||''}`)}">${esc(p.name||'Peer')}</span><span class="opn-peer-meta">${esc(fmtHandshake(p.latest_handshake))}</span></div>`).join('')}</div>`:'<div class="opn-peer-empty">Keine Peer-Statusdaten verfügbar.</div>'}</div>`:'';
-      return `<div class="opn-widget"><div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state active">API online</span></div><div class="metric-grid opn-metrics">${metrics.map(([k,v])=>`<div class="metric"><div class="metric-label">${esc(k)}</div><div class="metric-value">${esc(String(v))}</div></div>`).join('')}</div>${traffic}${peerList}</div>`;
+      const showPeers=wgEnabled&&enabled('show_wireguard_peers',true);
+      const peers=showPeers&&Array.isArray(summary.wireguard?.peers)?summary.wireguard.peers.slice(0,peerLimit):[];
+      const peerTraffic=enabled('show_wireguard_peer_traffic',false);
+      const peerList=showPeers?`<div class="opn-wireguard"><div class="opn-wireguard-head"><span>WireGuard Peers</span><strong>${fmt(summary.wireguard?.online||0)} online · ${fmt(summary.wireguard?.stale||0)} stale · ${fmt(summary.wireguard?.offline||0)} offline</strong></div>${peers.length?`<div class="opn-peer-list">${peers.map(p=>`<div class="opn-peer ${peerTraffic?'with-traffic':''}"><span class="opn-peer-dot ${attr(p.status||'offline')}"></span><span class="opn-peer-copy"><span class="opn-peer-name" title="${attr(`${p.interface||''} ${p.allowed_ips||''} ${p.endpoint||''}`)}">${esc(p.name||'Peer')}</span>${peerTraffic?`<small>↓ ${esc(fmtBytes(p.rx))} · ↑ ${esc(fmtBytes(p.tx))}</small>`:''}</span><span class="opn-peer-meta">${esc(fmtHandshake(p.latest_handshake))}</span></div>`).join('')}</div>`:'<div class="opn-peer-empty">Keine Peer-Statusdaten verfügbar.</div>'}</div>`:'';
+
+      const serviceLimit=Math.max(1,Math.min(15,Number(cfg.service_limit||5)));
+      const services=enabled('show_services',false)&&Array.isArray(summary.services)?summary.services.slice(0,serviceLimit):[];
+      const serviceList=enabled('show_services',false)?`<div class="opn-detail"><div class="opn-detail-head"><span>Dienste</span><strong>${fmt((summary.services||[]).filter(s=>s.running).length)}/${fmt((summary.services||[]).length)} aktiv</strong></div>${services.length?`<div class="opn-detail-list">${services.map(s=>`<div class="opn-detail-row"><span class="opn-peer-dot ${s.running?'online':'offline'}"></span><span title="${attr(s.id||'')}">${esc(s.name||s.id||'Service')}</span><strong class="${s.running?'ok':'bad'}">${s.running?'Online':'Gestoppt'}</strong></div>`).join('')}</div>`:'<div class="opn-peer-empty">Keine Servicedaten verfügbar.</div>'}</div>`:'';
+
+      const carpLimit=Math.max(1,Math.min(10,Number(cfg.carp_limit||3)));
+      const carpRows=enabled('show_carp',false)&&Array.isArray(summary.carp)?summary.carp.slice(0,carpLimit):[];
+      const carpList=enabled('show_carp',false)?`<div class="opn-detail"><div class="opn-detail-head"><span>CARP / VIP</span><strong>${fmt((summary.carp||[]).length)}</strong></div>${carpRows.length?`<div class="opn-detail-list">${carpRows.map(c=>{const status=String(c.status||'unknown');const good=/master|active|ok/i.test(status);return `<div class="opn-detail-row"><span class="opn-peer-dot ${good?'online':'stale'}"></span><span>${esc(c.address||c.interface||'VIP')}${c.vhid?` <small>VHID ${esc(c.vhid)}</small>`:''}</span><strong class="${good?'ok':''}">${esc(status)}</strong></div>`}).join('')}</div>`:'<div class="opn-peer-empty">Keine CARP/VIP-Daten verfügbar.</div>'}</div>`:'';
+
+      return `<div class="opn-widget"><div class="service-heading"><span class="status-dot"></span><span class="service-name">${esc(integration.name)}</span><span class="service-state active">API online</span></div>${metrics.length?`<div class="metric-grid opn-metrics">${metrics.map(([k,v])=>`<div class="metric"><div class="metric-label">${esc(k)}</div><div class="metric-value">${esc(String(v))}</div></div>`).join('')}</div>`:''}${traffic}${peerList}${serviceList}${carpList}</div>`;
     }
     if (type === 'proxmox') {
       const metrics=[];
@@ -568,7 +598,7 @@
   }
 
   function gridMetrics(grid) {
-    const style = getComputedStyle(grid); const gap = parseFloat(style.columnGap) || 16; const row = parseFloat(style.gridAutoRows) || 86; const rect = grid.getBoundingClientRect();
+    const style = getComputedStyle(grid); const gap = parseFloat(style.columnGap) || 16; const row = parseFloat(style.gridAutoRows) || 9.5; const rect = grid.getBoundingClientRect();
     return { rect, gap, col: (rect.width - gap * 11) / 12, row, unitY: row + gap };
   }
   const intersects = (a,b) => a.id !== b.id && a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
@@ -585,11 +615,11 @@
   function nearestSlot(source, occupied){
     const maxX=Math.max(0,12-source.w);
     const xs=Array.from({length:maxX+1},(_,x)=>x).sort((a,b)=>Math.abs(a-source.x)-Math.abs(b-source.x));
-    for(let dy=0;dy<40;dy++){
+    for(let dy=0;dy<160;dy++){
       const y=Math.max(0,source.y+dy);
       for(const x of xs){const c={...source,x,y};if(!overlapsAny(c,occupied))return c;}
     }
-    return {...source,x:0,y:Math.max(0,source.y+40)};
+    return {...source,x:0,y:Math.max(0,source.y+160)};
   }
   function reflowPreview(dragId, candidate, base, widgets){
     const result={};
@@ -627,7 +657,7 @@
     const move=e=>{
       e.preventDefault?.();
       const dw=Math.round((e.clientX-sx)/(m.col+m.gap));const dh=Math.round((e.clientY-sy)/m.unitY);const minW=widget.type==='app'||widget.type==='homeassistant-entities'?1:2;
-      const candidate={...original,w:Math.max(minW,Math.min(12-original.x,original.w+dw)),h:Math.max(1,Math.min(8,original.h+dh))};
+      const candidate={...original,w:Math.max(minW,Math.min(12-original.x,original.w+dw)),h:Math.max(GRID_MIN_H,Math.min(GRID_MAX_H,original.h+dh))};
       applyPositionMap(reflowPreview(widget.id,candidate,base,widgets),widgets,grid);
       el.classList.toggle('app-widget-xs',widget.type==='app'&&widget.w<=1);el.classList.toggle('app-widget-sm',widget.type==='app'&&widget.w===2);el.classList.toggle('app-widget-lg',widget.type==='app'&&widget.w>=3);
     };
@@ -678,19 +708,19 @@
 
   function configureWidgetChoice(key) {
     closeModal();
-    if (key === 'clock' || key === 'ipmanager-summary') { createWidget({type:key,w:key==='clock'?3:4,h:2}); return; }
+    if (key === 'clock' || key === 'ipmanager-summary') { createWidget({type:key,w:key==='clock'?3:4,h:2*GRID_SCALE}); return; }
     if (key.startsWith('integration:')) {
-      const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(integration?.type==='homeassistant'){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0],h:size[1]});return;
+      const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(integration?.type==='homeassistant'){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0],h:size[1]*GRID_SCALE});return;
     }
     if (key === 'app') {
       const opts=(state.boot.apps||[]).map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('');
-      showModal('App Shortcut','Wähle App und Darstellung.',`<div class="form-grid"><div class="field-row full"><label>App</label><select id="widgetAppId">${opts}</select></div><div class="field-row full"><label>Darstellung</label><select id="widgetAppLayout"><option value="vertical">Icon oben · Text darunter</option><option value="horizontal">Icon links · Text daneben</option><option value="auto">Automatisch nach Größe</option><option value="icon">Nur Icon</option></select></div></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value,layout=$('#widgetAppLayout',modal).value;closeModal();createWidget({type:'app',config:{app_id:id,layout},w:1,h:1});}});return;
+      showModal('App Shortcut','Wähle App und Darstellung.',`<div class="form-grid"><div class="field-row full"><label>App</label><select id="widgetAppId">${opts}</select></div><div class="field-row full"><label>Darstellung</label><select id="widgetAppLayout"><option value="vertical">Icon oben · Text darunter</option><option value="horizontal">Icon links · Text daneben</option><option value="auto">Automatisch nach Größe</option><option value="icon">Nur Icon</option></select></div></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const id=$('#widgetAppId',modal).value,layout=$('#widgetAppLayout',modal).value;closeModal();createWidget({type:'app',config:{app_id:id,layout},w:1,h:1*GRID_SCALE});}});return;
     }
     if (key === 'note') {
-      showModal('Notiz','Kurzer Text für dein Dashboard.',`<div class="field-row"><label>Titel (optional)</label><input id="widgetTitle"></div><div class="field-row"><label>Text</label><textarea id="widgetText" placeholder="Was willst du im Blick behalten?"></textarea></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,text=$('#widgetText',modal).value;closeModal();createWidget({type:'note',title,config:{text},w:3,h:2});}});return;
+      showModal('Notiz','Kurzer Text für dein Dashboard.',`<div class="field-row"><label>Titel (optional)</label><input id="widgetTitle"></div><div class="field-row"><label>Text</label><textarea id="widgetText" placeholder="Was willst du im Blick behalten?"></textarea></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,text=$('#widgetText',modal).value;closeModal();createWidget({type:'note',title,config:{text},w:3,h:2*GRID_SCALE});}});return;
     }
     if (key === 'rss') {
-      showModal('RSS / Atom Feed','Feed wird serverseitig geladen.',`<div class="field-row"><label>Titel</label><input id="widgetTitle" placeholder="Tech News"></div><div class="field-row"><label>Feed URL</label><input id="feedUrl" type="url" placeholder="https://example.org/feed.xml"></div><div class="field-row"><label>Max. Meldungen</label><input id="feedLimit" type="number" min="1" max="15" value="6"></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,feed_url=$('#feedUrl',modal).value,limit=Number($('#feedLimit',modal).value)||6;if(!feed_url){toast('Feed URL fehlt.','error');return;}closeModal();createWidget({type:'rss',title,config:{feed_url,limit,verify_tls:true},w:6,h:3});}});
+      showModal('RSS / Atom Feed','Feed wird serverseitig geladen.',`<div class="field-row"><label>Titel</label><input id="widgetTitle" placeholder="Tech News"></div><div class="field-row"><label>Feed URL</label><input id="feedUrl" type="url" placeholder="https://example.org/feed.xml"></div><div class="field-row"><label>Max. Meldungen</label><input id="feedLimit" type="number" min="1" max="15" value="6"></div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveWidgetConfig">Hinzufügen</button>`,modal=>{$('#saveWidgetConfig',modal).onclick=()=>{const title=$('#widgetTitle',modal).value,feed_url=$('#feedUrl',modal).value,limit=Number($('#feedLimit',modal).value)||6;if(!feed_url){toast('Feed URL fehlt.','error');return;}closeModal();createWidget({type:'rss',title,config:{feed_url,limit,verify_tls:true},w:6,h:3*GRID_SCALE});}});
     }
   }
 
@@ -719,7 +749,7 @@
     $$('[data-app-category]').forEach(b=>b.onclick=()=>{state.appCategory=b.dataset.appCategory;renderApps()});
     $$('[data-app-view]').forEach(b=>b.onclick=()=>{state.appView=b.dataset.appView;localStorage.setItem('pengulab-app-view',state.appView);renderApps()});
     $$('[data-edit-app]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();openAppModal(all.find(a=>a.id===b.dataset.editApp))});
-    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget,layout:'vertical'},w:1,h:1})});
+    $$('[data-add-app-widget]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();createWidget({type:'app',config:{app_id:b.dataset.addAppWidget,layout:'vertical'},w:1,h:1*GRID_SCALE})});
   }
 
   function openAppModal(app=null) {
@@ -749,7 +779,7 @@
     $('#addIntegration')?.addEventListener('click',()=>openIntegrationTypePicker());
     $$('[data-test-integration]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Teste…';try{const d=await api('integrations/test',{body:{id:b.dataset.testIntegration}});state.boot.integrations=d.integrations;renderIntegrations();toast('Verbindung erfolgreich.');}catch(e){b.disabled=false;b.textContent='Testen';toast(e.message,'error')}});
     $$('[data-edit-integration]').forEach(b=>b.onclick=()=>openIntegrationModal(integrations.find(i=>i.id===b.dataset.editIntegration)));
-    $$('[data-widget-integration]').forEach(b=>{b.onclick=()=>{const i=integrations.find(x=>x.id===b.dataset.widgetIntegration);if(!i)return;if(i.type==='homeassistant'){openHomeAssistantWidgetModal(i.id);return;}const cat=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===i?.type);const sz=cat?.defaultSize||[4,2];createWidget({type:'integration-summary',title:i?.name||'',config:{integration_id:i.id},w:sz[0],h:sz[1]});}});
+    $$('[data-widget-integration]').forEach(b=>{b.onclick=()=>{const i=integrations.find(x=>x.id===b.dataset.widgetIntegration);if(!i)return;if(i.type==='homeassistant'){openHomeAssistantWidgetModal(i.id);return;}const cat=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===i?.type);const sz=cat?.defaultSize||[4,2];createWidget({type:'integration-summary',title:i?.name||'',config:{integration_id:i.id},w:sz[0],h:sz[1]*GRID_SCALE});}});
   }
 
   function openIntegrationTypePicker(){const types=state.boot.integrationTypes||[];showModal('Verbindung hinzufügen','Installierte PenguHub-Connectoren.',`<div class="widget-picker">${types.map(t=>`<button class="widget-choice" data-integration-type="${attr(t.type)}"><strong>${esc(t.name)}</strong><span>${esc(t.description||'')}</span></button>`).join('')}</div>`,'',modal=>{$$('[data-integration-type]',modal).forEach(b=>b.onclick=()=>{closeModal();openIntegrationModal(null,b.dataset.integrationType)})});}
@@ -767,21 +797,37 @@
   }
 
   async function loadOpnsenseInterfaces(modal,existing){
-    const select=$('[data-widget-option="traffic_interface"]',modal);if(!select)return;
-    const saved=String(existing?.config?.traffic_interface||'auto');const current=saved.toLowerCase()==='wan'?'auto':saved;
-    if(!existing?.id){select.innerHTML='<option value="auto">Automatisch (WAN erkennen)</option>';select.disabled=true;select.title='Nach dem ersten Speichern werden die OPNsense-Interfaces automatisch geladen.';return;}
-    select.disabled=true;select.innerHTML=`<option value="${attr(current)}">Interfaces werden geladen…</option>`;
+    const interfaceSelect=$('[data-widget-option="traffic_interface"]',modal);
+    const gatewaySelect=$('[data-widget-option="gateway_name"]',modal);
+    const savedInterface=String(existing?.config?.traffic_interface||'auto');const currentInterface=savedInterface.toLowerCase()==='wan'?'auto':savedInterface;
+    const currentGateway=String(existing?.config?.gateway_name||'auto');
+    if(!existing?.id){
+      if(interfaceSelect){interfaceSelect.innerHTML='<option value="auto">Automatisch (WAN erkennen)</option>';interfaceSelect.disabled=true;interfaceSelect.title='Nach dem ersten Speichern werden die OPNsense-Interfaces automatisch geladen.';}
+      if(gatewaySelect){gatewaySelect.innerHTML='<option value="auto">Automatisch (Default Gateway)</option>';gatewaySelect.disabled=true;gatewaySelect.title='Nach dem ersten Speichern werden die OPNsense-Gateways automatisch geladen.';}
+      return;
+    }
+    if(interfaceSelect){interfaceSelect.disabled=true;interfaceSelect.innerHTML=`<option value="${attr(currentInterface)}">Interfaces werden geladen…</option>`;}
+    if(gatewaySelect){gatewaySelect.disabled=true;gatewaySelect.innerHTML=`<option value="${attr(currentGateway)}">Gateways werden geladen…</option>`;}
     try{
-      const d=await api('integrations/interfaces',{body:{id:existing.id}});const interfaces=d.interfaces||[];
-      const options=[{id:'auto',label:'Automatisch (WAN erkennen)',address:''},...interfaces];
-      if(current!=='auto'&&!options.some(i=>String(i.id)===current))options.push({id:current,label:`${current} (gespeichert)`,address:''});
-      select.innerHTML=options.map(i=>{const label=i.id==='auto'?i.label:`${i.label||i.id} · ${i.id}${i.address?` · ${i.address}`:''}`;return `<option value="${attr(i.id)}" ${String(i.id)===current?'selected':''}>${esc(label)}</option>`}).join('');
-      select.disabled=false;
-    }catch(e){select.innerHTML=`<option value="${attr(current)}">${esc(current==='auto'?'Automatisch (WAN erkennen)':current)}</option>`;select.disabled=false;select.title=e.message;}
+      const d=await api('integrations/interfaces',{body:{id:existing.id}});
+      if(interfaceSelect){
+        const interfaces=d.interfaces||[];const options=[{id:'auto',label:'Automatisch (WAN erkennen)',address:''},...interfaces];
+        if(currentInterface!=='auto'&&!options.some(i=>String(i.id)===currentInterface))options.push({id:currentInterface,label:`${currentInterface} (gespeichert)`,address:''});
+        interfaceSelect.innerHTML=options.map(i=>{const label=i.id==='auto'?i.label:`${i.label||i.id} · ${i.id}${i.address?` · ${i.address}`:''}`;return `<option value="${attr(i.id)}" ${String(i.id)===currentInterface?'selected':''}>${esc(label)}</option>`}).join('');interfaceSelect.disabled=false;
+      }
+      if(gatewaySelect){
+        const gateways=d.gateways||[];const options=[{name:'auto',status:'',default:true},...gateways];
+        if(currentGateway!=='auto'&&!options.some(g=>String(g.name)===currentGateway))options.push({name:currentGateway,status:'gespeichert',default:false});
+        gatewaySelect.innerHTML=options.map(g=>{const value=g.name||'auto';const label=value==='auto'?'Automatisch (Default Gateway)':`${g.name}${g.default?' · Default':''}${g.status?` · ${g.status}`:''}`;return `<option value="${attr(value)}" ${String(value)===currentGateway?'selected':''}>${esc(label)}</option>`}).join('');gatewaySelect.disabled=false;
+      }
+    }catch(e){
+      if(interfaceSelect){interfaceSelect.innerHTML=`<option value="${attr(currentInterface)}">${esc(currentInterface==='auto'?'Automatisch (WAN erkennen)':currentInterface)}</option>`;interfaceSelect.disabled=false;interfaceSelect.title=e.message;}
+      if(gatewaySelect){gatewaySelect.innerHTML=`<option value="${attr(currentGateway)}">${esc(currentGateway==='auto'?'Automatisch (Default Gateway)':currentGateway)}</option>`;gatewaySelect.disabled=false;gatewaySelect.title=e.message;}
+    }
   }
 
-  function integrationFieldHtml(field,existing){const k=field.key;if(k==='base_url'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" type="url" value="${attr(existing?.base_url||'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}if(k==='username'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.username||'')}"></div>`;}if(k==='verify_tls'){const checked=existing?existing.verify_tls:(field.default!==false);return `<label class="setting-line"><span class="setting-copy"><strong>${esc(field.label)}</strong><p>Bei internen Self-Signed-Zertifikaten kann dies deaktiviert werden.</p></span><input data-field="${attr(k)}" type="checkbox" ${checked?'checked':''}></label>`;}if(field.secret){const has=existing?.has_secrets?.[k];return `<div class="field-row"><label>${esc(field.label)}${has?' · gespeichert':''}</label><input data-field="${attr(k)}" type="password" autocomplete="new-password" placeholder="${has?'Leer lassen = behalten':''}"></div>`;}return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.config?.[k]??field.default??'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}
-  function integrationWidgetOptionHtml(option,existing){const cfg=existing?.config||{},value=Object.prototype.hasOwnProperty.call(cfg,option.key)?cfg[option.key]:option.default;if(option.type==='boolean')return `<label class="setting-line compact"><span class="setting-copy"><strong>${esc(option.label)}</strong></span><input data-widget-option="${attr(option.key)}" type="checkbox" ${value!==false?'checked':''}></label>`;if(option.type==='interface-select')return `<div class="field-row"><label>${esc(option.label)}</label><select data-widget-option="${attr(option.key)}"><option value="${attr(value||'auto')}">${esc(String(value||'auto'))}</option></select><small class="field-help">PenguLab erkennt die in OPNsense konfigurierten Interfaces automatisch.</small></div>`;if(option.type==='select')return `<div class="field-row"><label>${esc(option.label)}</label><select data-widget-option="${attr(option.key)}">${(option.options||[]).map(o=>{const ov=typeof o==='object'?o.value:o,ol=typeof o==='object'?(o.label??o.value):o;return `<option value="${attr(ov)}" ${String(value)===String(ov)?'selected':''}>${esc(ol)}</option>`}).join('')}</select></div>`;if(option.type==='number')return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" type="number" min="${attr(option.min??'')}" max="${attr(option.max??'')}" step="${attr(option.step??1)}" value="${attr(value??'')}"></div>`;return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" value="${attr(value??'')}" placeholder="${attr(option.placeholder||'')}"></div>`;}
+  function integrationFieldHtml(field,existing){const k=field.key;if(k==='base_url'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" type="url" value="${attr(existing?.base_url||'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}if(k==='username'){return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.username||'')}"></div>`;}if(k==='verify_tls'){const checked=existing?existing.verify_tls:(field.default!==false);return `<label class="setting-line"><span class="setting-copy"><strong>${esc(field.label)}</strong><p>Für interne Self-Signed-Zertifikate standardmäßig aus. Bei vertrauenswürdigem Zertifikat aktivieren.</p></span><input data-field="${attr(k)}" type="checkbox" ${checked?'checked':''}></label>`;}if(field.secret){const has=existing?.has_secrets?.[k];return `<div class="field-row"><label>${esc(field.label)}${has?' · gespeichert':''}</label><input data-field="${attr(k)}" type="password" autocomplete="new-password" placeholder="${has?'Leer lassen = behalten':''}"></div>`;}return `<div class="field-row"><label>${esc(field.label)}</label><input data-field="${attr(k)}" value="${attr(existing?.config?.[k]??field.default??'')}" placeholder="${attr(field.placeholder||'')}"></div>`;}
+  function integrationWidgetOptionHtml(option,existing){if(option.type==='heading')return `<div class="integration-option-heading">${esc(option.label||'')}</div>`;const cfg=existing?.config||{},value=Object.prototype.hasOwnProperty.call(cfg,option.key)?cfg[option.key]:option.default;if(option.type==='boolean')return `<label class="setting-line compact"><span class="setting-copy"><strong>${esc(option.label)}</strong></span><input data-widget-option="${attr(option.key)}" type="checkbox" ${value!==false?'checked':''}></label>`;if(option.type==='interface-select'||option.type==='gateway-select'){const help=option.type==='interface-select'?'PenguLab erkennt die in OPNsense konfigurierten Interfaces automatisch.':'PenguLab erkennt die in OPNsense konfigurierten Gateways automatisch.';return `<div class="field-row"><label>${esc(option.label)}</label><select data-widget-option="${attr(option.key)}"><option value="${attr(value||'auto')}">${esc(String(value||'auto'))}</option></select><small class="field-help">${help}</small></div>`;}if(option.type==='select')return `<div class="field-row"><label>${esc(option.label)}</label><select data-widget-option="${attr(option.key)}">${(option.options||[]).map(o=>{const ov=typeof o==='object'?o.value:o,ol=typeof o==='object'?(o.label??o.value):o;return `<option value="${attr(ov)}" ${String(value)===String(ov)?'selected':''}>${esc(ol)}</option>`}).join('')}</select></div>`;if(option.type==='number')return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" type="number" min="${attr(option.min??'')}" max="${attr(option.max??'')}" step="${attr(option.step??1)}" value="${attr(value??'')}"></div>`;return `<div class="field-row"><label>${esc(option.label)}</label><input data-widget-option="${attr(option.key)}" value="${attr(value??'')}" placeholder="${attr(option.placeholder||'')}"></div>`;}
 
   async function uploadAddonPackage(file){
     const url=new URL(apiUrl,window.location.href);url.searchParams.set('route','addons/upload');

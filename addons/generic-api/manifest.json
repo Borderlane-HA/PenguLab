@@ -17,7 +17,7 @@
       {"key": "bearer_token", "label": "Bearer token", "type": "password", "secret": true},
       {"key": "username", "label": "Basic auth username", "type": "text"},
       {"key": "password", "label": "Basic auth password", "type": "password", "secret": true},
-      {"key": "verify_tls", "label": "Verify TLS certificate", "type": "boolean", "default": true}
+      {"key": "verify_tls", "label": "Verify TLS certificate", "type": "boolean", "default": false}
     ]
   },
   "widgets": [

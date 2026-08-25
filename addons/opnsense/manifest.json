@@ -1,10 +1,10 @@
 {
   "id": "opnsense",
   "name": "OPNsense",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "category": "Network",
   "author": "Borderlane-HA",
-  "description": "Read-only OPNsense health, gateways, live interface traffic, WireGuard peers and ARP monitoring through API key/secret authentication.",
+  "description": "Read-only OPNsense dashboard with gateways, system resources, live traffic, firewall states, WireGuard peers, services, CARP and ARP discovery.",
   "icon": "firewall",
   "connector": "connector.php",
   "permissions": [
@@ -42,15 +42,59 @@
         "key": "verify_tls",
         "label": "Verify TLS certificate",
         "type": "boolean",
-        "default": true
+        "default": false
       }
     ],
     "widget_options": [
       {
+        "type": "heading",
+        "label": "System"
+      },
+      {
         "key": "show_system",
-        "label": "Systemstatus anzeigen",
+        "label": "Firewall-/API-Status anzeigen",
         "type": "boolean",
         "default": true
+      },
+      {
+        "key": "show_cpu",
+        "label": "CPU-Auslastung anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "show_memory",
+        "label": "RAM-Auslastung anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "show_disk",
+        "label": "Systemspeicher anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "show_temperature",
+        "label": "Temperatur anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "show_uptime",
+        "label": "Uptime anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "show_firewall_states",
+        "label": "Firewall States anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "type": "heading",
+        "label": "Gateway"
       },
       {
         "key": "show_gateway",
@@ -59,10 +103,20 @@
         "default": true
       },
       {
-        "key": "show_memory",
-        "label": "Speicher anzeigen",
+        "key": "show_gateway_loss",
+        "label": "Paketverlust und RTT-Abweichung anzeigen",
         "type": "boolean",
-        "default": true
+        "default": false
+      },
+      {
+        "key": "gateway_name",
+        "label": "Gateway",
+        "type": "gateway-select",
+        "default": "auto"
+      },
+      {
+        "type": "heading",
+        "label": "Traffic"
       },
       {
         "key": "show_traffic",
@@ -71,16 +125,38 @@
         "default": true
       },
       {
+        "key": "show_traffic_errors",
+        "label": "Interface-Fehler und Drops anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "traffic_interface",
+        "label": "Traffic-Interface",
+        "type": "interface-select",
+        "default": "auto"
+      },
+      {
+        "type": "heading",
+        "label": "WireGuard"
+      },
+      {
         "key": "show_wireguard",
         "label": "WireGuard-Status anzeigen",
         "type": "boolean",
-        "default": false
+        "default": true
       },
       {
         "key": "show_wireguard_peers",
         "label": "WireGuard-Peers anzeigen",
         "type": "boolean",
-        "default": true
+        "default": false
+      },
+      {
+        "key": "show_wireguard_peer_traffic",
+        "label": "RX/TX je WireGuard-Peer anzeigen",
+        "type": "boolean",
+        "default": false
       },
       {
         "key": "wireguard_peer_limit",
@@ -107,10 +183,68 @@
         ]
       },
       {
-        "key": "traffic_interface",
-        "label": "Traffic-Interface",
-        "type": "interface-select",
-        "default": "auto"
+        "type": "heading",
+        "label": "Dienste & HA"
+      },
+      {
+        "key": "show_services",
+        "label": "OPNsense-Dienste anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "service_limit",
+        "label": "Anzahl Dienste",
+        "type": "select",
+        "default": "5",
+        "options": [
+          {
+            "value": "3",
+            "label": "3"
+          },
+          {
+            "value": "5",
+            "label": "5"
+          },
+          {
+            "value": "10",
+            "label": "10"
+          },
+          {
+            "value": "15",
+            "label": "15"
+          }
+        ]
+      },
+      {
+        "key": "show_carp",
+        "label": "CARP/VIP-Status anzeigen",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "key": "carp_limit",
+        "label": "Anzahl CARP/VIPs",
+        "type": "select",
+        "default": "3",
+        "options": [
+          {
+            "value": "3",
+            "label": "3"
+          },
+          {
+            "value": "5",
+            "label": "5"
+          },
+          {
+            "value": "10",
+            "label": "10"
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "label": "Aktualisierung"
       },
       {
         "key": "refresh_interval",
@@ -147,7 +281,7 @@
       "type": "integration-summary",
       "integrationType": "opnsense",
       "name": "OPNsense Health",
-      "description": "System, gateway, memory, WireGuard and live traffic for an automatically discovered interface.",
+      "description": "Configurable OPNsense health, gateway, system, traffic, WireGuard, services and CARP status.",
       "icon": "firewall",
       "defaultSize": [
         5,

@@ -7,7 +7,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     $base = rtrim((string)($integration['base_url'] ?? ''), '/');
     $tokenId = trim((string)($integration['username'] ?? ''));
     $secret = trim((string)($integration['_secrets']['token_secret'] ?? ''));
-    $verify = (bool)($integration['verify_tls'] ?? true);
+    $verify = (bool)($integration['verify_tls'] ?? false);
     $cfg = is_array($integration['config'] ?? null) ? $integration['config'] : [];
     if ($base === '' || $tokenId === '' || $secret === '') throw new RuntimeException('PBS API token is incomplete.');
 

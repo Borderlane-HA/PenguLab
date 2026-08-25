@@ -7,7 +7,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     if ($mode !== 'summary') throw new RuntimeException('Unsupported Portainer connector mode.');
     $base = rtrim((string)($integration['base_url'] ?? ''), '/');
     $token = trim((string)($integration['_secrets']['api_key'] ?? ''));
-    $verify = (bool)($integration['verify_tls'] ?? true);
+    $verify = (bool)($integration['verify_tls'] ?? false);
     $cfg = is_array($integration['config'] ?? null) ? $integration['config'] : [];
     $endpointFilter = trim((string)($cfg['endpoint_id'] ?? ''));
     if ($base === '' || $token === '') throw new RuntimeException('Portainer URL and API token are required.');

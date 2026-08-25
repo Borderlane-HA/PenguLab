@@ -35,7 +35,7 @@
         "key": "verify_tls",
         "label": "Verify TLS certificate",
         "type": "boolean",
-        "default": true
+        "default": false
       }
     ],
     "widget_options": [

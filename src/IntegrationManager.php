@@ -38,7 +38,7 @@ final class IntegrationManager
         if ($name === '') throw new RuntimeException('Integration name is required.');
         $baseUrl = trim((string)($input['base_url'] ?? ''));
         $username = mb_substr(trim((string)($input['username'] ?? '')), 0, 180);
-        $verifyTls = !array_key_exists('verify_tls', $input) || (bool)$input['verify_tls'];
+        $verifyTls = array_key_exists('verify_tls', $input) ? (bool)$input['verify_tls'] : false;
 
         $existing = $this->full($id);
         $secretPayload = $existing['_secrets'] ?? [];

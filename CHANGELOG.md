@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.6.0
+
+- Made the vertical dashboard grid four times finer while preserving existing widget positions and sizes during migration.
+- Improved AdGuard Home metric layout so three metrics use the full widget width and no invisible fourth column stretches the card.
+- Expanded the OPNsense widget with optional CPU, RAM, disk, temperature, uptime, firewall states, gateway loss/jitter, interface errors, WireGuard peer traffic, services and CARP/VIP status.
+- Added automatic OPNsense gateway discovery and gateway selection for Multi-WAN setups.
+- Changed new built-in integrations to start with TLS certificate verification disabled for common self-signed homelab certificates; existing integration settings are preserved.
+- Updated portable import handling so layouts exported before 2.6 are migrated to the finer grid automatically.
+
 ## 2.5.3
 
 - Fixed integration widget headers still appearing when the title was only the automatically stored integration name.

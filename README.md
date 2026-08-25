@@ -16,7 +16,7 @@ It is built for people who want a fast overview, useful widgets and a setup that
 - **Real-time monitoring** – view live values, status information and small charts at a glance.
 - **Smart integrations** – connect tools like Pi-hole, AdGuard Home, OPNsense, Home Assistant, Proxmox VE, Proxmox Backup Server, Zabbix, Docker and Portainer through PenguHub.
 - **Useful controls** – pause DNS protection or control selected Home Assistant entities right from the dashboard.
-- **Touch-friendly layout** – move and resize widgets on desktop or iPad; while dragging, nearby tiles temporarily make room and return when that space is no longer needed.
+- **Touch-friendly, fine-grained layout** – move and resize widgets on desktop or iPad with a much finer vertical grid; nearby tiles temporarily make room while dragging.
 - **Private by design** – your data stays on your own server.
 
 ## Overview
@@ -33,7 +33,7 @@ Available integrations and add-ons include:
 
 - Pi-hole
 - AdGuard Home
-- OPNsense
+- OPNsense — gateway, traffic, WireGuard, system resources, services and CARP/VIP status
 - Home Assistant
 - Proxmox VE
 - Proxmox Backup Server

@@ -8,7 +8,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     $base = rtrim((string)($integration['base_url'] ?? ''), '/');
     $user = trim((string)($integration['username'] ?? ''));
     $password = (string)($integration['_secrets']['password'] ?? '');
-    $verify = (bool)($integration['verify_tls'] ?? true);
+    $verify = (bool)($integration['verify_tls'] ?? false);
     if ($base === '') throw new RuntimeException('Docker API URL is required.');
 
     $request = static function(string $path) use ($http,$base,$user,$password,$verify): mixed {

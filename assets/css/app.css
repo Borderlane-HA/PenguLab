@@ -1,7 +1,7 @@
 :root{
   --bg:#f5f6fa;--surface:#ffffff;--surface-2:#f9fafc;--surface-3:#f1f3f8;--text:#172033;--muted:#707a91;--soft:#9ba4b8;--border:#e4e7ef;--border-strong:#d8dce7;
   --primary:#6d6df6;--primary-2:#8a7cff;--primary-soft:#efefff;--success:#2fa66f;--warning:#d99a34;--danger:#d95867;--shadow:0 16px 40px rgba(31,41,72,.07);--shadow-sm:0 8px 22px rgba(31,41,72,.06);
-  --sidebar:232px;--radius:22px;--radius-sm:14px;--gap:16px;--row:86px;color-scheme:light;
+  --sidebar:232px;--radius:22px;--radius-sm:14px;--gap:16px;--row:9.5px;color-scheme:light;
 }
 html[data-theme="dark"]{--bg:#11141b;--surface:#191d26;--surface-2:#1e232d;--surface-3:#252b36;--text:#edf0f7;--muted:#9ba5b8;--soft:#727d91;--border:#2b313d;--border-strong:#39414f;--primary:#8a82ff;--primary-2:#a391ff;--primary-soft:#272544;--success:#48bb86;--warning:#e7aa48;--danger:#ef7380;--shadow:0 18px 48px rgba(0,0,0,.23);--shadow-sm:0 8px 24px rgba(0,0,0,.18);color-scheme:dark}
 @media(prefers-color-scheme:dark){html[data-theme="system"]{--bg:#11141b;--surface:#191d26;--surface-2:#1e232d;--surface-3:#252b36;--text:#edf0f7;--muted:#9ba5b8;--soft:#727d91;--border:#2b313d;--border-strong:#39414f;--primary:#8a82ff;--primary-2:#a391ff;--primary-soft:#272544;--success:#48bb86;--warning:#e7aa48;--danger:#ef7380;--shadow:0 18px 48px rgba(0,0,0,.23);--shadow-sm:0 8px 24px rgba(0,0,0,.18);color-scheme:dark}}
@@ -40,7 +40,7 @@ html[data-theme="dark"]{--bg:#11141b;--surface:#191d26;--surface-2:#1e232d;--sur
 .dns-widget .service-heading{margin-bottom:8px}
 .service-state{margin-left:auto;font-size:10px;font-weight:750;padding:4px 7px;border-radius:999px;background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success)}
 .service-state.paused{background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning)}
-.dns-metrics{flex:1;min-height:0}
+.dns-metrics{flex:0 0 auto;min-height:0;align-content:start;grid-template-columns:repeat(var(--dns-columns,4),minmax(0,1fr));grid-auto-rows:minmax(54px,auto)}
 .service-actions{display:flex;gap:6px;margin-top:8px}
 .service-action{height:27px;min-width:0;flex:1;border:1px solid var(--border);background:var(--surface-2);border-radius:9px;padding:0 8px;color:var(--muted);font-size:9px;font-weight:760;cursor:pointer;white-space:nowrap}
 .service-action:hover:not(:disabled){border-color:var(--border-strong);color:var(--text)}
@@ -84,11 +84,11 @@ html[data-theme="dark"]{--bg:#11141b;--surface:#191d26;--surface-2:#1e232d;--sur
   .app-library-grid{grid-template-columns:repeat(auto-fill,minmax(155px,1fr))}
   .app-library-actions{opacity:1;transform:none}
 }
-.dns-metrics{height:auto;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-content:stretch}
+.dns-metrics{height:auto;grid-template-columns:repeat(var(--dns-columns,4),minmax(0,1fr));gap:6px;align-content:start}
 .dns-metrics .metric{padding:8px 9px}
 .dns-metrics .metric-label{font-size:8px}
 .dns-metrics .metric-value{font-size:14px;margin-top:2px}
-@media(max-width:980px){.dns-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:980px){.dns-metrics-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* PenguLab 2.0 alpha.5: selectable app layouts, integration graphs/options and IP discovery */
 .widget-type-app .app-layout-vertical{flex-direction:column;justify-content:center;text-align:center;gap:8px;padding:5px}
@@ -565,3 +565,31 @@ body{background:var(--shell-highlight),var(--bg)}
   .grid-reflowing .widget:not(.dragging){transition:order .16s ease,transform .16s ease}
   .mobile-size-picker{grid-template-columns:1fr}
 }
+
+/* 2.6 integration option groups */
+.integration-option-heading{margin:14px 0 3px;padding-top:10px;border-top:1px solid var(--border);font-size:9px;font-weight:850;letter-spacing:.10em;text-transform:uppercase;color:var(--primary)}
+.integration-option-heading:first-child{margin-top:0;padding-top:0;border-top:0}
+
+/* 2.6 OPNsense detail sections and dense DNS metrics */
+.opn-traffic-meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:3px;color:var(--muted);font-size:8px}
+.opn-traffic-meta b{color:var(--text);font-weight:800}
+.opn-peer-copy{min-width:0;display:flex;flex-direction:column;gap:1px}
+.opn-peer-copy small{font-size:7px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opn-peer.with-traffic{align-items:start}
+.opn-detail{margin-top:8px;padding:8px 9px;border-radius:12px;background:var(--surface-2)}
+.opn-detail-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;color:var(--muted);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.opn-detail-head strong{margin-left:auto;color:var(--text);font-size:9px;letter-spacing:0;text-transform:none}
+.opn-detail-list{display:grid;gap:1px}
+.opn-detail-row{display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-items:center;gap:7px;min-height:23px;padding:3px 0;border-top:1px solid color-mix(in srgb,var(--border) 56%,transparent);font-size:9px}
+.opn-detail-row:first-child{border-top:0}
+.opn-detail-row>span:nth-child(2){min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:680}
+.opn-detail-row small{color:var(--muted);font-size:7px}
+.opn-detail-row strong{font-size:8px;color:var(--muted);font-weight:780;white-space:nowrap}
+.opn-detail-row strong.ok{color:var(--success)}
+.opn-detail-row strong.bad{color:var(--danger)}
+.dns-metrics .metric{min-width:0}
+.dns-metrics-3{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.dns-metrics-2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+.dns-metrics-1{grid-template-columns:1fr!important}
+@media(max-width:520px){.dns-metrics-3{grid-template-columns:repeat(3,minmax(0,1fr))!important}.dns-metrics .metric{padding-left:7px;padding-right:7px}}
+.dns-widget .service-actions{margin-top:auto;padding-top:8px}
