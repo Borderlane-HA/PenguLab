@@ -1,0 +1,170 @@
+[
+  {
+    "id": "pengulab-bridge",
+    "type": "tab",
+    "label": "PenguLab Bridge",
+    "disabled": false,
+    "info": "Bridge protocol 1 for Node-RED 5.x. Set PENGULAB_TOKEN in flow properties. See docs/SMART_HOME.md. Demo controls do not affect real devices.",
+    "env": [
+      {
+        "name": "PENGULAB_TOKEN",
+        "value": "",
+        "type": "str"
+      }
+    ]
+  },
+  {
+    "id": "pengulab-read",
+    "type": "http in",
+    "z": "pengulab-bridge",
+    "name": "Read / health",
+    "url": "/pengulab/:operation",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 150,
+    "y": 100,
+    "wires": [
+      [
+        "pengulab-handler"
+      ]
+    ]
+  },
+  {
+    "id": "pengulab-write",
+    "type": "http in",
+    "z": "pengulab-bridge",
+    "name": "Explicit actions",
+    "url": "/pengulab/action",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 150,
+    "y": 160,
+    "wires": [
+      [
+        "pengulab-handler"
+      ]
+    ]
+  },
+  {
+    "id": "pengulab-handler",
+    "type": "function",
+    "z": "pengulab-bridge",
+    "name": "Exposed data points & token check",
+    "func": "// PenguLab bridge protocol 1. Configure PENGULAB_TOKEN in this tab's properties.\n// Define only the data points you want to expose. Values arrive on the feedback input.\nconst definitions = [\n    {entity_id:\"demo.temperature\",name:\"Demo Temperatur\",value_type:\"number\",domain:\"sensor\",unit:\"°C\",writable:false},\n    {entity_id:\"demo.switch\",name:\"Demo Schalter\",value_type:\"boolean\",domain:\"switch\",writable:true},\n    {entity_id:\"demo.setpoint\",name:\"Demo Sollwert\",value_type:\"number\",domain:\"number\",min:5,max:30,step:0.5,unit:\"°C\",writable:true},\n    {entity_id:\"demo.action\",name:\"Demo Aktion\",value_type:\"boolean\",domain:\"button\",writable:true}\n];\nconst reply=(status,payload)=>{msg.statusCode=status;msg.headers={\"Content-Type\":\"application/json\",\"Cache-Control\":\"no-store\"};msg.payload=payload;return [msg,null];};\nconst token=env.get(\"PENGULAB_TOKEN\");\nif(typeof token!==\"string\"||token.length<16)return reply(503,{ok:false,error:\"Set PENGULAB_TOKEN (at least 16 characters) in flow properties.\"});\nif(msg.req.headers.authorization!==\"Bearer \"+token)return reply(401,{ok:false,error:\"Unauthorized\"});\nconst op=msg.req.method===\"POST\"?\"action\":msg.req.params.operation;\nif(op===\"health\")return reply(200,{ok:true,protocol:1});\nif(op===\"entities\"){\n    const values=flow.get(\"pengulabValues\")||{};\n    const entities=definitions.map(e=>{\n        const known=Object.prototype.hasOwnProperty.call(values,e.entity_id),v=known?values[e.entity_id]:null;\n        return {...e,value:v,state:!known||v===null?\"unavailable\":typeof v===\"boolean\"?(v?\"on\":\"off\"):String(v)};\n    });\n    return reply(200,{ok:true,entities});\n}\nif(op!==\"action\"||msg.req.method!==\"POST\")return reply(404,{ok:false,error:\"Unknown operation\"});\nconst p=msg.payload;\nif(!p||typeof p!==\"object\"||Array.isArray(p))return reply(400,{ok:false,error:\"JSON object required\"});\nconst e=definitions.find(e=>e.entity_id===p.entity_id);\nif(!e||!e.writable)return reply(403,{ok:false,error:\"Data point is not writable\"});\nlet value=p.value;\nif(e.domain===\"button\"){\n    if(p.action!==\"trigger\")return reply(400,{ok:false,error:\"Use trigger\"});value=true;\n}else{\n    if(p.action!==\"set\")return reply(400,{ok:false,error:\"Use set\"});\n    if(e.value_type===\"boolean\"&&typeof value!==\"boolean\")return reply(400,{ok:false,error:\"Boolean required\"});\n    if(e.value_type===\"number\"&&(typeof value!==\"number\"||!Number.isFinite(value)||(e.min!==undefined&&value<e.min)||(e.max!==undefined&&value>e.max)))return reply(400,{ok:false,error:\"Invalid numeric value\"});\n}\n// Output 2 is the command. Connect it to your existing automation nodes.\n// Device feedback updates the displayed value; accepting a command is not a device acknowledgement.\nconst result=reply(202,{ok:true,accepted:true});\nresult[1]={topic:e.entity_id,payload:value,penguLabAction:p.action};\nreturn result;",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 130,
+    "wires": [
+      [
+        "pengulab-response"
+      ],
+      [
+        "pengulab-commands",
+        "pengulab-demo"
+      ]
+    ]
+  },
+  {
+    "id": "pengulab-response",
+    "type": "http response",
+    "z": "pengulab-bridge",
+    "name": "API response",
+    "statusCode": "",
+    "headers": {},
+    "x": 750,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "pengulab-commands",
+    "type": "debug",
+    "z": "pengulab-bridge",
+    "name": "Commands → connect your automation here",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "true",
+    "targetType": "full",
+    "x": 810,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "pengulab-demo",
+    "type": "function",
+    "z": "pengulab-bridge",
+    "name": "Demo feedback only (replace for real devices)",
+    "func": "if (![\"demo.switch\",\"demo.setpoint\"].includes(msg.topic)) return null;\nreturn msg;",
+    "outputs": 1,
+    "x": 710,
+    "y": 260,
+    "wires": [
+      [
+        "pengulab-feedback"
+      ]
+    ]
+  },
+  {
+    "id": "pengulab-feedback",
+    "type": "function",
+    "z": "pengulab-bridge",
+    "name": "Store device feedback",
+    "func": "// Feed real device values into this node: msg.topic = entity_id, msg.payload = value.\nif(typeof msg.topic!==\"string\"||![\"string\",\"number\",\"boolean\"].includes(typeof msg.payload)&&msg.payload!==null)return null;\nif([\"__proto__\",\"constructor\",\"prototype\"].includes(msg.topic))return null;\nconst values=flow.get(\"pengulabValues\")||{};\nvalues[msg.topic]=msg.payload;\nflow.set(\"pengulabValues\",values);\nreturn null;",
+    "outputs": 0,
+    "x": 430,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "pengulab-seed",
+    "type": "inject",
+    "z": "pengulab-bridge",
+    "name": "Demo values (once after deploy)",
+    "props": [],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 0.2,
+    "topic": "",
+    "x": 170,
+    "y": 440,
+    "wires": [
+      [
+        "pengulab-seed-function"
+      ]
+    ]
+  },
+  {
+    "id": "pengulab-seed-function",
+    "type": "function",
+    "z": "pengulab-bridge",
+    "name": "Example data only",
+    "func": "return [[{topic:\"demo.temperature\",payload:21.5},{topic:\"demo.switch\",payload:false},{topic:\"demo.setpoint\",payload:20}]];",
+    "outputs": 1,
+    "x": 440,
+    "y": 440,
+    "wires": [
+      [
+        "pengulab-feedback"
+      ]
+    ]
+  },
+  {
+    "id": "pengulab-help",
+    "type": "comment",
+    "z": "pengulab-bridge",
+    "name": "1. Set token in tab properties · 2. Deploy · 3. Add integration in PenguLab",
+    "info": "Base URL: http://HOST:1880/pengulab\nUse a random token with at least 16 characters. No extra palette packages required.\nReplace demo definitions and wire commands/feedback for real devices.",
+    "x": 390,
+    "y": 40,
+    "wires": []
+  }
+]

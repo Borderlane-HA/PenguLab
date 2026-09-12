@@ -20,6 +20,11 @@ It is built for people who want a fast overview, useful widgets and a setup that
 - **App groups** – drag one app onto another to create a compact iPhone/iPad-style folder and keep busy dashboards tidy.
 - **Private by design** – your data stays on your own server.
 
+## Overview
+
+<p align="center">
+  <img src="docs/images/dashboard-overview.png" alt="PenguLab dashboard overview" width="100%">
+</p>
 
 ## What you can add
 
@@ -160,3 +165,8 @@ Please change the password after your first login.
 ## License
 
 See [LICENSE](LICENSE).
+
+## 2.10.0: Editor und Smart Home
+
+Magnetisches Ausrichten, weniger Layout-Arbeit und ioBroker-/Node-RED-Widgets.
+Siehe [Release Notes](RELEASE_NOTES_2.10.0.md) und [Einrichtung der neuen Integrationen](docs/SMART_HOME.md).

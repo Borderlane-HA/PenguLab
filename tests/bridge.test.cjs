@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),fs=require('fs');
+const flow=JSON.parse(fs.readFileSync(__dirname+'/../addons/nodered/pengulab-bridge.json','utf8'));
+const main=flow.find(n=>n.id==='pengulab-handler'),run=new Function('msg','flow','env',main.func),feedback=new Function('msg','flow',flow.find(n=>n.id==='pengulab-feedback').func);
+const values={},context={get:k=>values[k],set:(k,v)=>values[k]=v},env={get:()=> 'test-token-1234567890'};
+const request=(op,body,token='test-token-1234567890')=>run({req:{method:body?'POST':'GET',params:{operation:op},headers:{authorization:'Bearer '+token}},payload:body},context,env);
+assert.equal(request('health')[0].payload.protocol,1);
+assert.equal(request('health',null,'wrong')[0].statusCode,401);
+assert.equal(run({req:{headers:{}}},context,{get:()=>''})[0].statusCode,503);
+feedback({topic:'demo.switch',payload:false},context);assert.equal(request('entities')[0].payload.entities.find(e=>e.entity_id==='demo.switch').state,'off');
+const accepted=request('action',{entity_id:'demo.switch',action:'set',value:true});assert.equal(accepted[0].statusCode,202);assert.equal(accepted[1].payload,true);
+assert.equal(request('action',{entity_id:'demo.temperature',action:'set',value:1})[0].statusCode,403);
+assert.equal(request('action',{entity_id:'demo.setpoint',action:'set',value:99})[0].statusCode,400);
+assert.equal(request('action',{entity_id:'demo.switch',action:'set',value:'false'})[0].statusCode,400);
+assert.equal(request('action',{entity_id:'demo.action',action:'trigger'})[1].payload,true);
+assert.equal(request('entities')[0].payload.entities.find(e=>e.entity_id==='demo.switch').state,'off','accepted command must wait for device feedback');
+for(const n of flow)for(const output of n.wires||[])for(const id of output)assert.ok(flow.some(x=>x.id===id));
+console.log('Node-RED flow contract tests passed.');

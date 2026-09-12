@@ -1,3 +1,7 @@
+# 2.10.0 · 2026-09-12
+
+Schnellerer Dashboard-Editor, magnetisches Ausrichten, identische Editor-Geometrie, reparierter Polling-Lebenszyklus sowie ioBroker- und Node-RED-Datenpunkt-Widgets. Details: [Release Notes](RELEASE_NOTES_2.10.0.md).
+
 # Changelog
 
 ## 2.9.1

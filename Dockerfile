@@ -31,6 +31,8 @@ RUN addgroup -S pengulab \
     && chmod +x /app/docker-entrypoint.sh
 
 ENV PENGULAB_DATA_DIR=/app/data
+# Keep a slow status request from blocking every other API action (Linux CLI server).
+ENV PHP_CLI_SERVER_WORKERS=4
 
 EXPOSE 8080
 

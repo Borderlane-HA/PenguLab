@@ -86,6 +86,7 @@ $assetVersion = rawurlencode($version);
         <a class="avatar-btn" href="#settings" title="<?= htmlspecialchars((string)($auth->user()['username'] ?? 'User')) ?>"><?= htmlspecialchars(strtoupper(substr((string)($auth->user()['username'] ?? 'P'),0,1))) ?></a>
       </header>
       <main class="main" id="app"><div class="boot-loader"><span></span><p>PenguLab wird geladen…</p></div></main>
+      <script src="assets/js/layout.js?v=<?= htmlspecialchars($assetVersion) ?>" defer></script>
       <script src="assets/js/app.js?v=<?= htmlspecialchars($assetVersion) ?>" defer></script>
     <?php endif; ?>
   </div>

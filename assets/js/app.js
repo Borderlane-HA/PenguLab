@@ -16,6 +16,8 @@
     appView: localStorage.getItem('pengulab-app-view') || 'compact',
     widgetRefreshTimers: new Map(),
     widgetInFlight: new Map(),
+    widgetGeneration: 0,
+    interactionActive: false,
     metricHistory: new Map(),
     canvasMigrationInFlight: false,
   };
@@ -43,6 +45,7 @@
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
     const response = await fetch(url, {
       method,
+      signal: options.signal,
       headers,
       cache: 'no-store',
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
@@ -64,6 +67,9 @@
   function clearTimers() {
     for (const timer of state.widgetRefreshTimers.values()) clearInterval(timer);
     state.widgetRefreshTimers.clear();
+    state.widgetGeneration++;
+    for (const request of state.widgetInFlight.values()) request.abort?.();
+    state.widgetInFlight.clear();
   }
 
   function setViewFromHash() {
@@ -132,6 +138,7 @@
 
   function render() {
     if (!state.boot) return;
+    state.cancelInteraction?.();
     clearTimers();
     document.body.classList.toggle('editing', state.editMode && state.view === 'dashboard');
     switch (state.view) {
@@ -214,6 +221,9 @@
   }
 
   function renderDashboard() {
+    state.cancelInteraction?.();
+    const retained = new Map($$('[data-widget-body]',appRoot).map(body=>[body.dataset.widgetBody,{body,key:body.dataset.renderKey}]));
+    clearTimers();
     // renderDashboard() is also called directly while entering/leaving layout edit mode.
     // Keep the body state in sync so drag handles, delete buttons and resize grips are visible.
     document.body.classList.toggle('editing', state.editMode);
@@ -222,7 +232,7 @@
     const dashboardActions=isAdmin()?(state.editMode
       ? `<button class="btn" id="cancelLayoutBtn">Abbrechen</button><button class="btn primary" id="saveLayoutBtn">Speichern</button>`
       : `<button class="btn" id="editLayoutBtn">Layout bearbeiten</button><button class="btn primary" id="addWidgetBtn">+ Widget</button>`):'';
-    const editHint=state.editMode?(isPhoneEditor()?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel halten und vertikal verschieben · App auf App halten = Gruppe · Größe über ↕ ändern.':'<span class="edit-mode-pill">Bearbeitungsmodus</span> Frei verschieben und skalieren · 8 px Snap · App auf App halten = Gruppe · andere Kacheln machen automatisch Platz.'):'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
+    const editHint=state.editMode?(isPhoneEditor()?'<span class="edit-mode-pill">Bearbeitungsmodus</span> Kachel halten und vertikal verschieben · App auf App halten = Gruppe · Größe über ↕ ändern.':'<span class="edit-mode-pill">Bearbeitungsmodus</span> Frei verschieben und skalieren · Kanten & Größen magnetisch · Alt: ohne Magnet · Pfeiltasten: 8 px · App auf App halten = Gruppe.'):'Dashboard-Widgets lassen sich über „Layout bearbeiten“ frei anordnen.';
     appRoot.innerHTML = pageHead('Control Center', title, 'Apps, Services und Homelab-Status an einem Ort.', dashboardActions) + (isAdmin()?`<div class="dashboard-toolbar"><span class="edit-hint">${state.editMode?editHint:esc(editHint)}</span></div>`:'') +
     `<div class="dashboard-grid ${isCanvasLayout()?'canvas-layout':''}" id="dashboardGrid" style="${isCanvasLayout()?`--canvas-height:${canvasHeightPx(widgets)}px`:''}">${widgets.length ? widgets.map(widgetShell).join('') : `<div class="empty-dashboard"><h3>Dein Dashboard ist bereit</h3><p>${isAdmin()?'Füge Apps, Statuskarten, RSS oder Add-on-Widgets hinzu.':'Für deinen Benutzer sind noch keine Dashboard-Widgets freigegeben.'}</p>${isAdmin()?'<button class="btn primary" id="emptyAddWidget">+ Erstes Widget</button>':''}</div>`}</div>`;
 
@@ -241,20 +251,27 @@
     $$('.widget-mobile-size', appRoot).forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation(); const widget=(state.boot.widgets||[]).find(w=>w.id===btn.dataset.id); if(widget) openMobileSizeSettings(widget);
     }));
+    for(const widget of widgets){
+      const body=$(`[data-widget-body="${CSS.escape(widget.id)}"]`,appRoot);
+      const key=JSON.stringify([widget.type,widget.title,widget.config]);
+      const old=retained.get(widget.id);
+      if(old?.key===key && widget.type!=='clock') body.replaceWith(old.body);
+      else if(body) body.dataset.renderKey=key;
+    }
     if (state.editMode) enableGridInteractions();
     loadWidgetData();
   }
 
   function widgetShell(widget) {
     const title = widget.title || widgetTitle(widget);
-    const typeClass = `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
+    const typeClass = (widget.type==='automation-entities'?'widget-type-homeassistant-entities ':'') + `widget-type-${String(widget.type || 'unknown').replace(/[^a-z0-9_-]/gi,'-')}`;
     const visualWidth = isCanvasLayout() ? (Number(widget.w)||0)*CANVAS_SNAP : (Number(widget.w)||0)*56;
     const visualHeight = isCanvasLayout() ? (Number(widget.h)||0)*CANVAS_SNAP : (Number(widget.h)||0)*40;
     const sizeClass = widget.type === 'app' ? (visualWidth < 150 ? 'app-widget-xs' : visualWidth < 260 ? 'app-widget-sm' : 'app-widget-lg') : '';
     const groupSizeClass = widget.type === 'app-group' ? ((visualWidth < 135 || visualHeight < 110) ? 'app-group-sm' : (visualWidth > 220 && visualHeight > 150 ? 'app-group-lg' : 'app-group-md')) : '';
-    const haCount = widget.type === 'homeassistant-entities' ? (Array.isArray(widget.config?.entity_ids) ? widget.config.entity_ids.length : 0) : 0;
-    const haSizeClass = widget.type === 'homeassistant-entities' ? `${haCount===1?'ha-widget-single ':''}${visualWidth<150?'ha-widget-xs ':''}${haCount>=4||visualWidth<280?'ha-widget-dense':''}`.trim() : '';
-    const settingsButton = isAdmin() && ['app','app-group','homeassistant-entities','integration-summary'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
+    const haCount = ['homeassistant-entities','automation-entities'].includes(widget.type) ? (Array.isArray(widget.config?.entity_ids) ? widget.config.entity_ids.length : 0) : 0;
+    const haSizeClass = ['homeassistant-entities','automation-entities'].includes(widget.type) ? `${haCount===1?'ha-widget-single ':''}${visualWidth<150?'ha-widget-xs ':''}${haCount>=4||visualWidth<280?'ha-widget-dense':''}`.trim() : '';
+    const settingsButton = isAdmin() && ['app','app-group','homeassistant-entities','automation-entities','integration-summary'].includes(widget.type) ? `<button class="widget-mini-btn widget-settings" data-id="${attr(widget.id)}" title="Einstellungen">⚙</button>` : '';
     const mobileSize = ['small','medium','large'].includes(String(widget.config?.mobile_size||'')) ? String(widget.config.mobile_size) : 'auto';
     const phoneSizeButton = isAdmin() ? `<button class="widget-mini-btn widget-mobile-size" data-id="${attr(widget.id)}" title="Größe auf Mobilgeräten">↕</button>` : '';
     const storedTitle = String(widget.title || '').trim();
@@ -262,12 +279,13 @@
     // Older PenguLab versions stored the automatically generated integration name in widget.title.
     // Treat that value as a default title, not as a user-defined custom title.
     const hasCustomTitle = !!storedTitle && !(widget.type === 'integration-summary' && storedTitle === generatedTitle) && !(widget.type === 'clock' && storedTitle === generatedTitle);
-    const autoCompactHeadTypes = ['homeassistant-entities','integration-summary','clock'];
-    const hideHead = autoCompactHeadTypes.includes(widget.type) && !hasCustomTitle && !state.editMode;
-    const head = hideHead ? '' : `<div class="widget-head"><span class="widget-drag-handle" title="Verschieben">⠿</span><span class="widget-title">${esc(title)}</span><span class="widget-head-spacer"></span><div class="widget-menu">${settingsButton}${phoneSizeButton}${isAdmin()?`<button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button>`:''}</div></div>`;
+    const autoCompactHeadTypes = ['homeassistant-entities','automation-entities','integration-summary','clock'];
+    const hideHead = autoCompactHeadTypes.includes(widget.type) && !hasCustomTitle;
+    const head = hideHead ? '' : `<div class="widget-head"><span class="widget-title">${esc(title)}</span></div>`;
+    const controls = isAdmin()?`<div class="widget-editor-controls"><span class="widget-drag-handle" title="Verschieben">⠿</span><div class="widget-menu">${settingsButton}${phoneSizeButton}<button class="widget-mini-btn widget-geometry" data-id="${attr(widget.id)}" title="Position und Größe">↔</button><button class="widget-mini-btn widget-remove" data-id="${attr(widget.id)}" title="Entfernen">×</button></div></div><span class="widget-resize" title="Größe ändern"></span>`:'';
     return `<section class="widget ${typeClass} ${sizeClass} ${groupSizeClass} ${haSizeClass} mobile-size-${mobileSize} ${hideHead?'widget-no-head':''}" data-widget-id="${attr(widget.id)}" style="--x:${Number(widget.x)||0};--y:${Number(widget.y)||0};--w:${Number(widget.w)||3};--h:${Number(widget.h)||8};--cx:${Number(widget.x)||0};--cy:${Number(widget.y)||0};--cw:${Number(widget.w)||3};--ch:${Number(widget.h)||8};--mobile-order:${mobileOrderOf(widget)}">
       ${head}
-      <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div><span class="widget-resize" title="Größe ändern"></span>
+      <div class="widget-body" data-widget-body="${attr(widget.id)}"><div class="widget-loading">Lädt…</div></div>${controls}
     </section>`;
   }
 
@@ -283,8 +301,8 @@
     if (widget.type === 'integration-summary') {
       const i = (state.boot.integrations || []).find(x => x.id === widget.config?.integration_id); return i?.name || 'Service';
     }
-    if (widget.type === 'homeassistant-entities') {
-      return widget.title || 'Home Assistant';
+    if (['homeassistant-entities','automation-entities'].includes(widget.type)) {
+      return widget.title || (state.boot.integrations||[]).find(i=>i.id===widget.config?.integration_id)?.name || 'Smart Home';
     }
     return 'Widget';
   }
@@ -295,65 +313,65 @@
     return seconds*1000;
   }
 
-  async function loadWidgetData() {
-    for (const widget of state.boot.widgets || []) {
-      if (['integration-summary','homeassistant-entities'].includes(widget.type)) {
-        // Paint the last server-side snapshot first, then refresh silently in the background.
-        loadCachedWidget(widget).finally(() => loadOneWidget(widget, true));
-      } else {
-        loadOneWidget(widget);
-      }
-      if (['integration-summary','homeassistant-entities','rss','ipmanager-summary'].includes(widget.type)) {
-        const interval = widget.type === 'rss' ? 300000 : (['integration-summary','homeassistant-entities'].includes(widget.type) ? integrationRefreshMs(widget) : 60000);
-        const timer = setInterval(() => loadOneWidget(widget, true), interval);
-        state.widgetRefreshTimers.set(widget.id, timer);
-      }
+  function loadWidgetData() {
+    const generation=state.widgetGeneration;
+    const schedule=(widget,ms)=>{
+      const timer=setTimeout(async()=>{
+        if(generation!==state.widgetGeneration)return;
+        if(!document.hidden&&!state.interactionActive)await loadOneWidget(widget,true);
+        if(generation===state.widgetGeneration)schedule(widget,ms);
+      },ms);
+      state.widgetRefreshTimers.set(widget.id,timer);
+    };
+    for(const widget of state.boot.widgets||[]){
+      const body=$(`[data-widget-body="${CSS.escape(widget.id)}"]`);
+      const remote=['integration-summary','homeassistant-entities','automation-entities'].includes(widget.type);
+      if(!body?.querySelector('.widget-loading')&&widget.type!=='clock'){
+        // Reuse the live DOM when entering/leaving the editor, with no request burst.
+      }else if(remote){loadCachedWidget(widget).finally(()=>{if(generation===state.widgetGeneration)loadOneWidget(widget,true);});}
+      else loadOneWidget(widget);
+      if(remote||['rss','ipmanager-summary'].includes(widget.type))schedule(widget,widget.type==='rss'?300000:remote?integrationRefreshMs(widget):60000);
     }
   }
 
   async function loadCachedWidget(widget) {
-    const body=$(`[data-widget-body="${CSS.escape(widget.id)}"]`);
+    const body=$(`[data-widget-body="${CSS.escape(widget.id)}"]`),generation=state.widgetGeneration;
     if(!body)return;
-    try {
-      const result=await api('widgets/data',{params:{id:widget.id,cached:'1'}});
-      const data=result.data||{};
-      if(data.cached || (data.history?.a||[]).length || (data.history?.b||[]).length) renderWidgetData(body,widget,data);
-    } catch (_) { /* cache is optional */ }
+    try{
+      const result=await api('widgets/data',{params:{id:widget.id,cached:'1'}}),data=result.data||{};
+      if(generation===state.widgetGeneration&&body.isConnected&&!state.interactionActive&&(data.cached||(data.history?.a||[]).length||(data.history?.b||[]).length))renderWidgetData(body,widget,data);
+    }catch(_){/* optional cache */}
   }
 
-  async function loadOneWidget(widget, silent = false) {
-    const body = $(`[data-widget-body="${CSS.escape(widget.id)}"]`);
-    if (!body) return;
-    if (state.widgetInFlight.get(widget.id)) return;
-    try {
-      if (widget.type === 'app-group') {
-        renderWidgetData(body, widget, {kind:'app-group', apps:groupApps(widget), title:widget.title || 'Apps'}); return;
-      }
-      if (widget.type === 'clock') {
-        renderClock(body); return;
-      }
-      if (widget.type === 'note') {
-        body.innerHTML = `<div class="note-widget">${esc(widget.config?.text || 'Noch keine Notiz.')}</div>`; return;
-      }
-      state.widgetInFlight.set(widget.id,true);
-      const result = await api('widgets/data', {params:{id:widget.id}});
-      renderWidgetData(body, widget, result.data || {});
-    } catch (e) {
-      if (!silent) body.innerHTML = `<div class="widget-error">${esc(e.message)}</div>`;
-    } finally {
-      state.widgetInFlight.delete(widget.id);
-    }
+  async function loadOneWidget(widget,silent=false){
+    const body=$(`[data-widget-body="${CSS.escape(widget.id)}"]`),generation=state.widgetGeneration;
+    if(!body||state.interactionActive)return;
+    if(state.widgetInFlight.has(widget.id))return;
+    const controller=new AbortController();
+    state.widgetInFlight.set(widget.id,controller);
+    try{
+      if(widget.type==='app-group'){renderWidgetData(body,widget,{kind:'app-group',apps:groupApps(widget),title:widget.title||'Apps'});return;}
+      if(widget.type==='clock'){renderClock(body,widget.id);return;}
+      if(widget.type==='note'){body.innerHTML=`<div class="note-widget">${esc(widget.config?.text||'Noch keine Notiz.')}</div>`;return;}
+      const result=await api('widgets/data',{params:{id:widget.id},signal:controller.signal});
+      if(generation===state.widgetGeneration&&body.isConnected&&!state.interactionActive)renderWidgetData(body,widget,result.data||{});
+    }catch(e){if(e.name!=='AbortError'&&generation===state.widgetGeneration&&body.isConnected&&(!silent||body.querySelector('.widget-loading')))body.innerHTML=`<div class="widget-error">${esc(e.message)}</div>`;}
+    finally{if(state.widgetInFlight.get(widget.id)===controller)state.widgetInFlight.delete(widget.id);}
   }
 
-  function renderClock(body) {
+  function renderClock(body,id) {
     const tick = () => {
       const now = new Date();
       body.innerHTML = `<div class="clock-widget"><div><div class="clock-time">${new Intl.DateTimeFormat('de-DE',{hour:'2-digit',minute:'2-digit'}).format(now)}</div><div class="clock-date">${new Intl.DateTimeFormat('de-DE',{weekday:'long',day:'2-digit',month:'long'}).format(now)}</div></div></div>`;
     };
-    tick(); const timer = setInterval(tick, 30000); state.widgetRefreshTimers.set(`clock-${Math.random()}`, timer);
+    tick(); const timer = setInterval(tick, 30000); state.widgetRefreshTimers.set(`clock-${id}`, timer);
   }
 
   function renderWidgetData(body, widget, data) {
+    const {cached,fetched_at,cache_age,...visible}=data;
+    const fingerprint=JSON.stringify(visible);
+    if(body.dataset.fingerprint===fingerprint||body.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea'))return;
+    body.dataset.fingerprint=fingerprint;
     if (data.kind === 'app') {
       const app = data.app;
       if (!app) { body.innerHTML = '<div class="widget-error">App wurde entfernt.</div>'; return; }
@@ -378,6 +396,9 @@
       const items = data.items || [];
       body.innerHTML = `<div class="rss-list">${items.length ? items.map(i => `<a class="rss-item" href="${attr(i.link || '#')}" ${i.link ? 'target="_blank" rel="noopener"' : ''}><div><div class="rss-title">${esc(i.title)}</div>${i.description ? `<div class="rss-desc">${esc(i.description)}</div>` : ''}</div><div class="rss-date">${esc(fmtDate(i.date))}</div></a>`).join('') : '<div class="widget-loading">Keine Meldungen.</div>'}</div>`;
       return;
+    }
+    if (data.kind === 'automation') {
+      body.innerHTML=automationWidgetHtml(widget,data);bindAutomationActions(body,widget,data);return;
     }
     if (data.kind === 'homeassistant') {
       body.innerHTML = homeAssistantWidgetHtml(widget, data);
@@ -439,21 +460,46 @@
     });
   }
 
+  function automationWidgetHtml(widget,data){
+    const controls=data.show_controls!==false,icons=data.show_icons!==false;
+    return `<div class="ha-entity-grid ha-display-${attr(data.display||'auto')}">${(data.entities||[]).map(e=>{
+      const available=e.state!=='unavailable'&&e.state!=='unknown';let action='';
+      if(controls&&e.writable){
+        const disabled=available||e.domain==='button'?'':'disabled';
+        if(e.domain==='switch')action=`<button class="ha-toggle ${e.state==='on'?'on':''}" data-auto-action="set" data-entity="${attr(e.entity_id)}" ${disabled} aria-label="${attr(e.name)} schalten"><span></span></button>`;
+        if(e.domain==='button')action=`<button class="btn small" data-auto-action="trigger" data-entity="${attr(e.entity_id)}">Auslösen</button>`;
+        if(e.domain==='number')action=`<input class="automation-number" type="number" data-auto-number="${attr(e.entity_id)}" aria-label="${attr(e.name)}" value="${available?attr(e.value):''}" ${Number.isFinite(e.min)?`min="${e.min}"`:''} ${Number.isFinite(e.max)?`max="${e.max}"`:''} step="${Number.isFinite(e.step)&&e.step>0?e.step:'any'}" ${disabled}>`;
+      }
+      return `<div class="ha-entity ${available?'':'unavailable'}">${icons?`<div class="ha-entity-icon">${haIconSvg(e)}</div>`:''}<div class="ha-entity-copy"><div class="ha-entity-name" title="${attr(e.entity_id)}">${esc(e.name)}</div><div class="ha-entity-state">${esc(e.domain==='button'?'Aktion':haStateLabel(e))}</div></div>${action}</div>`;
+    }).join('')}</div>`;
+  }
+  function bindAutomationActions(body,widget,data){
+    const send=async(control,id,action,value)=>{
+      if(state.editMode)return;control.disabled=true;
+      try{await api('automation/action',{body:{id:widget.config.integration_id,entity_id:id,action,...(value!==undefined?{value}:{})}});body.dataset.fingerprint='';await loadOneWidget(widget,true);}
+      catch(e){toast(e.message,'error');}finally{if(control.isConnected)control.disabled=false;}
+    };
+    $$('[data-auto-action]',body).forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();const entity=data.entities.find(x=>x.entity_id===b.dataset.entity);send(b,b.dataset.entity,b.dataset.autoAction,b.dataset.autoAction==='set'?entity.state!=='on':undefined);});
+    $$('[data-auto-number]',body).forEach(input=>input.onchange=()=>{if(!input.checkValidity()||input.value===''){input.reportValidity();return;}send(input,input.dataset.autoNumber,'set',Number(input.value));});
+  }
+
   async function openHomeAssistantWidgetModal(integrationId,existingWidget=null){
-    const integration=(state.boot.integrations||[]).find(i=>i.id===integrationId&&i.type==='homeassistant');
+    const integration=(state.boot.integrations||[]).find(i=>i.id===integrationId&&['homeassistant','iobroker','nodered'].includes(i.type));
     if(!integration){toast('Home Assistant Integration nicht gefunden.','error');return;}
-    showModal(existingWidget?'Home Assistant Widget bearbeiten':'Home Assistant Widget','Lade verfügbare Entitäten…','');
+    const automation=integration.type!=='homeassistant',service=integration.name,widgetType=automation?'automation-entities':'homeassistant-entities';
+    showModal(existingWidget?`${service} Widget bearbeiten`:`${service} Widget`,'Lade verfügbare Entitäten…','');
     let entities=[];
-    try{const d=await api('homeassistant/entities',{body:{id:integrationId}});entities=d.entities||[];}catch(e){closeModal();toast(e.message,'error');return;}
+    try{const d=await api(automation?'automation/entities':'homeassistant/entities',{body:{id:integrationId}});entities=d.entities||[];}catch(e){closeModal();toast(e.message,'error');return;}
     const selected=new Set((existingWidget?.config?.entity_ids||[]).map(String));
+    for(const id of selected)if(!entities.some(e=>e.entity_id===id))entities.push({entity_id:id,name:id,domain:'sensor',state:'unavailable'});
     const display=existingWidget?.config?.display||'auto';const showIcons=existingWidget?.config?.show_icons!==false;const showControls=existingWidget?.config?.show_controls!==false;
     const entityRows=entities.map(e=>`<label class="ha-picker-row" data-ha-search="${attr(`${e.name} ${e.entity_id} ${e.domain}`.toLowerCase())}"><input type="checkbox" data-ha-pick="${attr(e.entity_id)}" ${selected.has(e.entity_id)?'checked':''}><span class="ha-picker-icon">${haIconSvg(e)}</span><span class="ha-picker-copy"><strong>${esc(e.name)}</strong><small>${esc(e.entity_id)} · ${esc(haStateLabel(e))}</small></span><span class="ha-picker-domain">${esc(e.domain)}</span></label>`).join('');
-    showModal(existingWidget?'Home Assistant Widget bearbeiten':'Home Assistant Widget','Bis zu 8 Sensoren, Schalter, Lichter oder Cover auswählen.',`<div class="field-row"><label>Titel (optional)</label><input id="haWidgetTitle" value="${attr(existingWidget?.title||'') }" placeholder="PV & Energie"></div><div class="form-grid"><div class="field-row"><label>Darstellung</label><select id="haWidgetDisplay"><option value="auto" ${display==='auto'?'selected':''}>Automatisch</option><option value="tiles" ${display==='tiles'?'selected':''}>Kacheln</option><option value="compact" ${display==='compact'?'selected':''}>Kompakt</option></select></div><div class="field-row"><label>Entitäten suchen</label><input id="haEntitySearch" placeholder="Batterie, PV, light…"></div></div><div class="ha-picker-options"><label><input id="haShowIcons" type="checkbox" ${showIcons?'checked':''}> Icons anzeigen</label><label><input id="haShowControls" type="checkbox" ${showControls?'checked':''}> Steuerung anzeigen</label><span id="haSelectedCount">${selected.size}/8 ausgewählt</span></div><div class="ha-picker-list">${entityRows||'<div class="widget-loading">Keine unterstützten Entitäten gefunden.</div>'}</div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveHaWidget">${existingWidget?'Speichern':'Hinzufügen'}</button>`,modal=>{
+    showModal(existingWidget?`${service} Widget bearbeiten`:`${service} Widget`,automation?'Bis zu 8 Datenpunkte auswählen. Schreibbare Werte können gesteuert werden.':'Bis zu 8 Sensoren, Schalter, Lichter oder Cover auswählen.',`<div class="field-row"><label>Titel (optional)</label><input id="haWidgetTitle" value="${attr(existingWidget?.title||'') }" placeholder="PV & Energie"></div><div class="form-grid"><div class="field-row"><label>Darstellung</label><select id="haWidgetDisplay"><option value="auto" ${display==='auto'?'selected':''}>Automatisch</option><option value="tiles" ${display==='tiles'?'selected':''}>Kacheln</option><option value="compact" ${display==='compact'?'selected':''}>Kompakt</option></select></div><div class="field-row"><label>Entitäten suchen</label><input id="haEntitySearch" placeholder="Batterie, PV, light…"></div></div><div class="ha-picker-options"><label><input id="haShowIcons" type="checkbox" ${showIcons?'checked':''}> Icons anzeigen</label><label><input id="haShowControls" type="checkbox" ${showControls?'checked':''}> Steuerung anzeigen</label><span id="haSelectedCount">${selected.size}/8 ausgewählt</span></div><div class="ha-picker-list">${entityRows||'<div class="widget-loading">Keine unterstützten Entitäten gefunden.</div>'}</div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="saveHaWidget">${existingWidget?'Speichern':'Hinzufügen'}</button>`,modal=>{
       const search=$('#haEntitySearch',modal),count=$('#haSelectedCount',modal);const checks=$$('[data-ha-pick]',modal);
       const updateCount=()=>{const n=checks.filter(c=>c.checked).length;count.textContent=`${n}/8 ausgewählt`;checks.forEach(c=>c.disabled=!c.checked&&n>=8)};
       checks.forEach(c=>c.onchange=updateCount);updateCount();
       search.oninput=()=>{const q=search.value.trim().toLowerCase();$$('[data-ha-search]',modal).forEach(row=>row.hidden=!!q&&!row.dataset.haSearch.includes(q))};
-      $('#saveHaWidget',modal).onclick=async()=>{const ids=checks.filter(c=>c.checked).map(c=>c.dataset.haPick).slice(0,8);if(!ids.length){toast('Wähle mindestens eine Entität.','error');return;}const config={integration_id:integrationId,entity_ids:ids,display:$('#haWidgetDisplay',modal).value,show_icons:$('#haShowIcons',modal).checked,show_controls:$('#haShowControls',modal).checked};const title=$('#haWidgetTitle',modal).value.trim();try{if(existingWidget){const d=await api('widgets/update',{body:{id:existingWidget.id,title,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Home Assistant Widget gespeichert.');}else{closeModal();const w=(ids.length===1?1:(ids.length===2?2:(ids.length<=4?3:4)))*2,h=(ids.length<=2?1:(ids.length<=4?2:3))*GRID_SCALE;await createWidget({type:'homeassistant-entities',title,config,w,h});}}catch(e){toast(e.message,'error')}};
+      $('#saveHaWidget',modal).onclick=async()=>{const ids=checks.filter(c=>c.checked).map(c=>c.dataset.haPick).slice(0,8);if(!ids.length){toast('Wähle mindestens eine Entität.','error');return;}const config={...(existingWidget?.config||{}),integration_id:integrationId,entity_ids:ids,display:$('#haWidgetDisplay',modal).value,show_icons:$('#haShowIcons',modal).checked,show_controls:$('#haShowControls',modal).checked};const title=$('#haWidgetTitle',modal).value.trim();try{if(existingWidget){const d=await api('widgets/update',{body:{id:existingWidget.id,title,config}});state.boot.widgets=d.widgets;closeModal();renderDashboard();toast('Home Assistant Widget gespeichert.');}else{closeModal();const w=(ids.length===1?1:(ids.length===2?2:(ids.length<=4?3:4)))*2,h=(ids.length<=2?1:(ids.length<=4?2:3))*GRID_SCALE;await createWidget({type:widgetType,title,config,w,h});}}catch(e){toast(e.message,'error')}};
     });
   }
 
@@ -612,8 +658,17 @@
     const grid = $('#dashboardGrid'); if (!grid) return;
     const widgets = state.boot.widgets || [];
     if (isPhoneEditor()) { enableMobileGridInteractions(grid, widgets); return; }
+    $$('.widget-geometry',grid).forEach(b=>b.onclick=()=>openGeometryModal(widgets.find(w=>w.id===b.dataset.id)));
     $$('.widget', grid).forEach(el => {
       const id = el.dataset.widgetId; const widget = widgets.find(w => w.id === id); if (!widget) return;
+      el.tabIndex=0;
+      el.addEventListener('keydown',e=>{
+        if(e.target!==el||state.interactionActive||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;
+        e.preventDefault();const p={...widget},step=e.shiftKey?4:1;
+        p.x=Math.max(0,Math.min(canvasCols(grid)-p.w,p.x+(e.key==='ArrowRight'?step:e.key==='ArrowLeft'?-step:0)));
+        p.y=Math.max(0,p.y+(e.key==='ArrowDown'?step:e.key==='ArrowUp'?-step:0));
+        applyPositionMap(reflowPreview(widget.id,p,positionSnapshot(widgets),widgets,canvasCols(grid)),widgets,grid);markLayoutDirty();
+      });
       // In edit mode the complete tile is a drag target. This is much easier on
       // touch devices than aiming for a tiny drag handle.
       el.addEventListener('pointerdown', ev => {
@@ -667,8 +722,8 @@
     window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
   }
 
-  function canvasMinW(widget){ return ['app','app-group','homeassistant-entities'].includes(widget?.type) ? 11 : 20; }
-  function canvasMinH(widget){ return ['app','app-group','homeassistant-entities'].includes(widget?.type) ? 9 : 11; }
+  function canvasMinW(widget){ return ['app','app-group','homeassistant-entities','automation-entities'].includes(widget?.type) ? 11 : 20; }
+  function canvasMinH(widget){ return ['app','app-group','homeassistant-entities','automation-entities'].includes(widget?.type) ? 9 : 11; }
   function canvasCols(grid){ return Math.max(1,Math.floor(grid.getBoundingClientRect().width/CANVAS_SNAP)); }
   function canvasHeightPx(widgets){
     if(!isCanvasLayout()) return 240;
@@ -689,56 +744,80 @@
   }
   function markLayoutDirty(){state.layoutDirty=true;const btn=$('#saveLayoutBtn');if(btn)btn.disabled=false;}
   function positionSnapshot(widgets){const out={};for(const w of widgets||[])out[w.id]={id:w.id,x:w.x,y:w.y,w:w.w,h:w.h};return out;}
-  function applyPositionMap(map, widgets, grid){
-    for(const w of widgets||[]){const pos=map[w.id];if(!pos)continue;Object.assign(w,{x:pos.x,y:pos.y,w:pos.w,h:pos.h});const el=grid.querySelector(`[data-widget-id="${CSS.escape(w.id)}"]`);if(el)setWidgetStyle(el,w);}
-    updateCanvasHeight(grid,widgets);
-  }
-  function overlapsAny(pos, occupied){return occupied.some(o=>intersects(pos,o));}
-  function nearestSlot(source,occupied,maxCols){
-    const maxX=Math.max(0,maxCols-source.w);
-    const xs=Array.from({length:maxX+1},(_,x)=>x).sort((a,b)=>Math.abs(a-source.x)-Math.abs(b-source.x));
-    for(let dy=0;dy<400;dy++){
-      const y=Math.max(0,source.y+dy);
-      for(const x of xs){const c={...source,x,y};if(!overlapsAny(c,occupied))return c;}
+  function applyPositionMap(map,widgets,grid){
+    let changed=false;
+    for(const w of widgets||[]){const p=map[w.id];if(!p||['x','y','w','h'].every(k=>w[k]===p[k]))continue;
+      Object.assign(w,{x:p.x,y:p.y,w:p.w,h:p.h});
+      const el=grid._widgetElements?.get(w.id)||grid.querySelector(`[data-widget-id="${CSS.escape(w.id)}"]`);
+      if(el){setWidgetStyle(el,w);updateWidgetSizeClasses(el,w);}changed=true;
     }
-    return {...source,x:0,y:Math.max(0,source.y+400)};
+    if(changed)updateCanvasHeight(grid,widgets);
   }
-  function reflowPreview(dragId,candidate,base,widgets,maxCols){
-    const result={};const dragged={...base[dragId],...candidate,id:dragId};result[dragId]=dragged;const occupied=[dragged];
-    const others=(widgets||[]).filter(w=>w.id!==dragId).map(w=>({...base[w.id]})).sort((a,b)=>a.y-b.y||a.x-b.x);
-    for(const original of others){let placed={...original};if(overlapsAny(placed,occupied))placed=nearestSlot(original,occupied,maxCols);result[original.id]=placed;occupied.push(placed);}return result;
+  function updateWidgetSizeClasses(el,w){
+    const px=isCanvasLayout()?w.w*8:w.w*56,py=isCanvasLayout()?w.h*8:w.h*40;
+    if(w.type==='app'){el.classList.toggle('app-widget-xs',px<150);el.classList.toggle('app-widget-sm',px>=150&&px<260);el.classList.toggle('app-widget-lg',px>=260);}
+    if(w.type==='app-group'){el.classList.toggle('app-group-sm',px<135||py<110);el.classList.toggle('app-group-lg',px>=135&&py>=110&&px>220&&py>150);el.classList.toggle('app-group-md',px>=135&&py>=110&&!(px>220&&py>150));}
+    if(['homeassistant-entities','automation-entities'].includes(w.type)){el.classList.toggle('ha-widget-xs',px<150);el.classList.toggle('ha-widget-dense',(w.config?.entity_ids||[]).length>=4||px<280);}
   }
+  function reflowPreview(id,candidate,base,widgets,cols){return PenguLayout.reflow(id,candidate,base,widgets,cols);}
   function layoutChangedFrom(base,widgets){return (widgets||[]).some(w=>{const b=base[w.id];return !b||w.x!==b.x||w.y!==b.y||w.w!==b.w||w.h!==b.h;});}
-  function startDrag(ev,el,widget,grid){
-    ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
-    const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]},dirtyBefore=state.layoutDirty;
-    let groupTarget=null,groupSince=0,readyTimer=null;
-    const clearTarget=()=>{if(readyTimer)clearTimeout(readyTimer);readyTimer=null;groupTarget=null;groupSince=0;clearGroupDropHighlight(grid);};
-    const setTarget=target=>{if(!target){clearTarget();return;}if(groupTarget?.widget?.id===target.widget.id)return;clearTarget();groupTarget=target;groupSince=performance.now();target.el.classList.add('group-drop-target');readyTimer=setTimeout(()=>{if(groupTarget?.widget?.id===target.widget.id)target.el.classList.add('group-drop-ready');},350);};
-    const move=e=>{
-      e.preventDefault?.();const dx=Math.round((e.clientX-sx)/m.col);const dy=Math.round((e.clientY-sy)/m.unitY);const maxCols=m.cols||GRID_COLS;const candidate={...original,x:Math.max(0,Math.min(maxCols-widget.w,original.x+dx)),y:Math.max(0,original.y+dy)};
-      if(widget.type==='app'){
-        const target=findAppGroupDropTarget(e.clientX,e.clientY,widget.id,grid);setTarget(target);
-        if(target){const preview={};for(const [id,pos] of Object.entries(base))preview[id]={...pos};preview[widget.id]=candidate;applyPositionMap(preview,widgets,grid);return;}
+  function startDrag(ev,el,widget,grid){startCanvasGesture(ev,el,widget,grid,false);}
+  function startResize(ev,el,widget,grid){startCanvasGesture(ev,el,widget,grid,true);}
+  function startCanvasGesture(ev,el,widget,grid,resize){
+    if(ev.button!==undefined&&ev.button!==0)return;
+    ev.preventDefault();ev.stopPropagation();state.cancelInteraction?.();
+    const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),original=base[widget.id],dirtyBefore=state.layoutDirty;
+    const refs=PenguLayout.targets(base,widget.id),locks={};
+    const scrollX=window.scrollX,scrollY=window.scrollY;
+    grid._widgetElements=new Map($$('.widget',grid).map(n=>[n.dataset.widgetId,n]));
+    el.focus({preventScroll:true});el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');state.interactionActive=true;
+    const overlay=document.createElement('div');overlay.className='layout-guides';grid.append(overlay);
+    let latest=ev,frame=0,lastKey='',target=null,targetSince=0,targetTimer=0;
+    const clearTarget=()=>{clearTimeout(targetTimer);target=null;targetSince=0;clearGroupDropHighlight(grid);};
+    const paint=()=>{
+      frame=0;const e=latest,dx=(e.clientX-ev.clientX+window.scrollX-scrollX)/m.col,dy=(e.clientY-ev.clientY+window.scrollY-scrollY)/m.unitY;
+      const raw=resize?{...original,w:original.w+dx,h:original.h+dy}:{...original,x:original.x+dx,y:original.y+dy};
+      const snapped=PenguLayout.snap(raw,refs,resize,locks,e.altKey),p=snapped.position;
+      if(resize){p.w=Math.max(canvasMinW(widget),Math.min(m.cols-original.x,512,p.w));p.h=Math.max(canvasMinH(widget),Math.min(512,p.h));}
+      p.x=Math.max(0,Math.min(m.cols-p.w,p.x));p.y=Math.max(0,p.y);
+      if(!resize&&widget.type==='app'){
+        // Use original geometry: displaced neighbours must not become moving drop targets.
+        const px=(e.clientX-m.rect.left)/m.col,py=(e.clientY-m.rect.top+window.scrollY-scrollY)/m.unitY;
+        const hit=widgets.find(w=>w.id!==widget.id&&['app','app-group'].includes(w.type)&&px>base[w.id].x+base[w.id].w*.25&&px<base[w.id].x+base[w.id].w*.75&&py>base[w.id].y+base[w.id].h*.25&&py<base[w.id].y+base[w.id].h*.75);
+        if(hit?.id!==target?.id){clearTarget();if(hit){target=hit;targetSince=performance.now();grid._widgetElements.get(hit.id)?.classList.add('group-drop-target');targetTimer=setTimeout(()=>grid._widgetElements?.get(hit.id)?.classList.add('group-drop-ready'),650);}}
       }
-      applyPositionMap(reflowPreview(widget.id,candidate,base,widgets,maxCols),widgets,grid);
+      const key=[p.x,p.y,p.w,p.h,target?.id||''].join(':');
+      if(key!==lastKey){lastKey=key;applyPositionMap(target?{...base,[widget.id]:p}:reflowPreview(widget.id,p,base,widgets,m.cols),widgets,grid);}
+      overlay.innerHTML=snapped.guides.map(g=>`<span class="layout-guide ${g.axis}" style="${g.axis==='x'?'left':'top'}:${g.line*8}px"></span>`).join('')+`<span class="layout-measure" style="left:${p.x*8}px;top:${Math.max(0,p.y*8-27)}px">${p.w*8} × ${p.h*8} px${snapped.guides.some(g=>g.label)?' · '+esc(snapped.guides.find(g=>g.label).label):''}${target?' · Halten für Gruppe':''}</span>`;
     };
-    const up=async()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');el.releasePointerCapture?.(ev.pointerId);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);const target=groupTarget&&performance.now()-groupSince>=320?groupTarget.widget:null;clearTarget();if(target){await applyAppGrouping(widget,target,base,widgets,grid,dirtyBefore);return;}if(layoutChangedFrom(base,widgets))markLayoutDirty();};
-    window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
+    const move=e=>{if(e.pointerId!==ev.pointerId)return;e.preventDefault();latest=e;if(!frame)frame=requestAnimationFrame(paint);};
+    const finish=async(cancel=false)=>{
+      if(frame){cancelAnimationFrame(frame);frame=0;if(!cancel)paint();}
+      const group=!cancel&&target&&performance.now()-targetSince>=650?target:null;
+      clearTarget();overlay.remove();window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',cancelHandler);window.removeEventListener('keydown',escape);
+      el.releasePointerCapture?.(ev.pointerId);el.classList.remove('dragging');grid.classList.remove('grid-reflowing');state.interactionActive=false;state.cancelInteraction=null;
+      if(cancel){applyPositionMap(base,widgets,grid);state.layoutDirty=dirtyBefore;}
+      else if(group){await applyAppGrouping(widget,group,base,widgets,grid,dirtyBefore);}
+      else { // A short hover must still resolve collisions before saving.
+        applyPositionMap(reflowPreview(widget.id,{x:widget.x,y:widget.y,w:widget.w,h:widget.h},base,widgets,m.cols),widgets,grid);
+        if(layoutChangedFrom(base,widgets))markLayoutDirty();
+      }
+      delete grid._widgetElements;
+    };
+    const up=e=>{if(e.pointerId!==ev.pointerId)return;latest=e;if(!frame)frame=requestAnimationFrame(paint);finish(false);};
+    const cancelHandler=()=>finish(true),escape=e=>{if(e.key==='Escape'){e.preventDefault();finish(true);}};
+    state.cancelInteraction=cancelHandler;
+    window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancelHandler);window.addEventListener('keydown',escape);
   }
-
-  function startResize(ev,el,widget,grid){
-    ev.preventDefault();ev.stopPropagation();el.setPointerCapture?.(ev.pointerId);el.classList.add('dragging');grid.classList.add('grid-reflowing');
-    const widgets=state.boot.widgets||[],base=positionSnapshot(widgets),m=gridMetrics(grid),sx=ev.clientX,sy=ev.clientY,original={...base[widget.id]};
-    const move=e=>{
-      e.preventDefault?.();const dw=Math.round((e.clientX-sx)/m.col);const dh=Math.round((e.clientY-sy)/m.unitY);const maxCols=m.cols||GRID_COLS;
-      const minW=isCanvasLayout()?canvasMinW(widget):(widget.type==='app'||widget.type==='homeassistant-entities'?2:4);const minH=isCanvasLayout()?canvasMinH(widget):GRID_MIN_H;const maxH=isCanvasLayout()?CANVAS_MAX_UNITS:GRID_MAX_H;
-      const candidate={...original,w:Math.max(minW,Math.min(maxCols-original.x,original.w+dw)),h:Math.max(minH,Math.min(maxH,original.h+dh))};
-      applyPositionMap(reflowPreview(widget.id,candidate,base,widgets,maxCols),widgets,grid);
-      const pxWidth=isCanvasLayout()?widget.w*CANVAS_SNAP:widget.w;el.classList.toggle('app-widget-xs',widget.type==='app'&&pxWidth<150);el.classList.toggle('app-widget-sm',widget.type==='app'&&pxWidth>=150&&pxWidth<260);el.classList.toggle('app-widget-lg',widget.type==='app'&&pxWidth>=260);
-    };
-    const up=()=>{el.classList.remove('dragging');grid.classList.remove('grid-reflowing');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);if(layoutChangedFrom(base,widgets)){markLayoutDirty();loadOneWidget(widget,true);}};
-    window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up,{once:true});
+  function openGeometryModal(widget){
+    const grid=$('#dashboardGrid');
+    showModal('Position und Größe','Angaben in Pixeln · 8-Pixel-Schritte',`<div class="form-grid">${[['x','Links'],['y','Oben'],['w','Breite'],['h','Höhe']].map(([k,label])=>`<div class="field-row"><label>${label}</label><input id="geometry-${k}" type="number" min="0" step="8" value="${widget[k]*8}"></div>`).join('')}</div>`,`<button class="btn" data-close-modal>Abbrechen</button><button class="btn primary" id="applyGeometry">Übernehmen</button>`,modal=>{
+      $('#applyGeometry',modal).onclick=()=>{
+        const p={...widget};for(const k of ['x','y','w','h']){const value=Number($(`#geometry-${k}`,modal).value);if(!Number.isFinite(value))return;p[k]=Math.round(value/8);}
+        p.w=Math.max(canvasMinW(widget),Math.min(canvasCols(grid),512,p.w));p.h=Math.max(canvasMinH(widget),Math.min(512,p.h));p.x=Math.max(0,Math.min(canvasCols(grid)-p.w,p.x));p.y=Math.max(0,p.y);
+        applyPositionMap(reflowPreview(widget.id,p,positionSnapshot(state.boot.widgets),state.boot.widgets,canvasCols(grid)),state.boot.widgets,grid);markLayoutDirty();closeModal();
+      };
+    });
   }
 
   function openAppGroup(widget) {
@@ -812,7 +891,7 @@
     if(widget.type==='app-group'){
       openAppGroupSettings(widget);return;
     }
-    if(widget.type==='homeassistant-entities'){
+    if(['homeassistant-entities','automation-entities'].includes(widget.type)){
       openHomeAssistantWidgetModal(widget.config?.integration_id, widget);return;
     }
     if(widget.type==='integration-summary'){
@@ -838,7 +917,7 @@
       {key:'note',name:'Note',desc:'Kurze Notiz direkt auf dem Dashboard.',icon:'N'},
       installedTypes.has('rss') ? {key:'rss',name:'RSS / Atom',desc:'News und Feeds anzeigen.',icon:'R'} : null,
       installedTypes.has('ipmanager-summary') ? {key:'ipmanager-summary',name:'IP Manager',desc:'Netze und dokumentierte Geräte.',icon:'IP'} : null,
-      ...integrations.filter(i=>i.enabled).map(i=>({key:'integration:'+i.id,name:i.name,desc:i.type==='homeassistant'?'Sensoren, Schalter, Lichter und Cover auswählen.':`${i.type} Status`,icon:initials(i.name)})),
+      ...integrations.filter(i=>i.enabled).map(i=>({key:'integration:'+i.id,name:i.name,desc:['homeassistant','iobroker','nodered'].includes(i.type)?'Sensoren, Schalter, Lichter und Cover auswählen.':`${i.type} Status`,icon:initials(i.name)})),
     ].filter(Boolean);
     showModal('Widget hinzufügen','Wähle, was auf dem Dashboard erscheinen soll.', `<div class="widget-picker">${cards.map(c=>`<button class="widget-choice" type="button" data-widget-choice="${attr(c.key)}"><strong>${esc(c.name)}</strong><span>${esc(c.desc)}</span></button>`).join('') || '<p>Installiere zuerst Pakete im PenguHub oder lege Apps an.</p>'}</div>`, '', modal => {
       $$('[data-widget-choice]',modal).forEach(btn=>btn.addEventListener('click',()=>configureWidgetChoice(btn.dataset.widgetChoice)));
@@ -849,7 +928,7 @@
     closeModal();
     if (key === 'clock' || key === 'ipmanager-summary') { createWidget({type:key,w:(key==='clock'?3:4)*2,h:2*GRID_SCALE}); return; }
     if (key.startsWith('integration:')) {
-      const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(integration?.type==='homeassistant'){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0]*2,h:size[1]*GRID_SCALE});return;
+      const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(['homeassistant','iobroker','nodered'].includes(integration?.type)){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0]*2,h:size[1]*GRID_SCALE});return;
     }
     if (key === 'app-group') {
       openCreateAppGroupModal(); return;
@@ -871,7 +950,7 @@
     try{
       if(isCanvasLayout()){
         const oldW=Math.max(1,Number(payload.w)||6),oldH=Math.max(1,Number(payload.h)||8);
-        payload={...payload,config:{...(payload.config||{}),layout_engine:'canvas8'},w:Math.max(['app','app-group','homeassistant-entities'].includes(payload.type)?11:20,Math.round(oldW*7)),h:Math.max(['app','app-group','homeassistant-entities'].includes(payload.type)?9:11,Math.round(oldH*3.2))};
+        payload={...payload,config:{...(payload.config||{}),layout_engine:'canvas8'},w:Math.max(['app','app-group','homeassistant-entities','automation-entities'].includes(payload.type)?11:20,Math.round(oldW*7)),h:Math.max(['app','app-group','homeassistant-entities','automation-entities'].includes(payload.type)?9:11,Math.round(oldH*3.2))};
       }
       const d=await api('widgets/create',{body:payload});state.boot.widgets=d.widgets;if(state.view==='dashboard')renderDashboard();else render();toast('Widget hinzugefügt.');
     }catch(e){toast(e.message,'error')}
@@ -925,7 +1004,7 @@
     const integrations=state.boot.integrations||[];const types=state.boot.integrationTypes||[];const admin=isAdmin();const catalog=state.boot.widgetCatalog||[];
     const actions=admin?(types.length?`<button class="btn primary" id="addIntegration">+ Verbindung</button>`:`<a class="btn primary" href="#hub">PenguHub öffnen</a>`):'';
     const cards=integrations.map(i=>{
-      const canWidget=i.type==='homeassistant'||catalog.some(c=>c.type==='integration-summary'&&c.integrationType===i.type);
+      const canWidget=['homeassistant','iobroker','nodered'].includes(i.type)||catalog.some(c=>c.type==='integration-summary'&&c.integrationType===i.type);
       const special=i.type==='npmplus'?`<button class="btn small primary" data-npmplus-import="${attr(i.id)}">Apps importieren</button>`:'';
       return `<article class="section-card integration-card"><div class="integration-top"><div class="package-icon" data-letter="${attr(initials(i.name))}"></div><div><div class="integration-name">${esc(i.name)}</div><div class="integration-type">${esc(i.type)}</div></div><div class="integration-status ${attr(i.last_status)}"><span class="status-dot"></span>${esc(i.last_status==='unknown'?'Nicht getestet':i.last_status)}</div></div><div class="integration-url">${esc(i.base_url)}</div>${i.last_error?`<div style="font-size:10px;color:var(--danger);margin-bottom:10px">${esc(i.last_error)}</div>`:''}${admin?`<div class="integration-actions"><button class="btn small soft" data-test-integration="${attr(i.id)}">Testen</button>${special}${canWidget?`<button class="btn small" data-widget-integration="${attr(i.id)}">Widget</button>`:''}<button class="btn small" data-edit-integration="${attr(i.id)}">Bearbeiten</button></div>`:'<div class="integration-access-note">Für deinen Benutzer freigegeben</div>'}</article>`;
     }).join('');
@@ -935,7 +1014,7 @@
     $$('[data-test-integration]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Teste…';try{const d=await api('integrations/test',{body:{id:b.dataset.testIntegration}});state.boot.integrations=d.integrations;renderIntegrations();toast('Verbindung erfolgreich.');}catch(e){b.disabled=false;b.textContent='Testen';toast(e.message,'error')}});
     $$('[data-edit-integration]').forEach(b=>b.onclick=()=>openIntegrationModal(integrations.find(i=>i.id===b.dataset.editIntegration)));
     $$('[data-npmplus-import]').forEach(b=>b.onclick=()=>openNpmplusImportModal(integrations.find(i=>i.id===b.dataset.npmplusImport)));
-    $$('[data-widget-integration]').forEach(b=>{b.onclick=()=>{const i=integrations.find(x=>x.id===b.dataset.widgetIntegration);if(!i)return;if(i.type==='homeassistant'){openHomeAssistantWidgetModal(i.id);return;}const cat=catalog.find(c=>c.type==='integration-summary'&&c.integrationType===i?.type);if(!cat){toast('Für diese Integration gibt es kein Dashboard-Widget.','error');return;}const sz=cat.defaultSize||[4,2];createWidget({type:'integration-summary',title:i?.name||'',config:{integration_id:i.id},w:sz[0]*2,h:sz[1]*GRID_SCALE});}});
+    $$('[data-widget-integration]').forEach(b=>{b.onclick=()=>{const i=integrations.find(x=>x.id===b.dataset.widgetIntegration);if(!i)return;if(['homeassistant','iobroker','nodered'].includes(i.type)){openHomeAssistantWidgetModal(i.id);return;}const cat=catalog.find(c=>c.type==='integration-summary'&&c.integrationType===i?.type);if(!cat){toast('Für diese Integration gibt es kein Dashboard-Widget.','error');return;}const sz=cat.defaultSize||[4,2];createWidget({type:'integration-summary',title:i?.name||'',config:{integration_id:i.id},w:sz[0]*2,h:sz[1]*GRID_SCALE});}});
   }
 
   function openNpmplusImportModal(integration){

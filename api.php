@@ -114,6 +114,7 @@ try {
             require_method('GET');
             $id = trim((string)($_GET['id'] ?? ''));
             require_widget_access($db, $auth, $id);
+            session_write_close(); // Slow integrations must not block layout saves in the same session.
             $cachedOnly = !empty($_GET['cached']);
             json_response(['ok' => true, 'data' => widget_data($db, $addons, $integrations, $id, $cachedOnly)]);
 
@@ -224,6 +225,33 @@ try {
             $input = json_body();
             $result = import_npmplus_apps($db, $integrations, $input);
             json_response(['ok'=>true] + $result + ['apps'=>$db->apps(),'widgets'=>$db->widgets(),'integrations'=>$integrations->list()]);
+
+        case 'automation/entities':
+            require_method('POST');
+            require_admin($auth);
+            $id=trim((string)(json_body()['id']??''));
+            $integration=$integrations->full($id);
+            if(!$integration||!in_array($integration['type'],['iobroker','nodered'],true))throw new RuntimeException('Automation integration not found.');
+            session_write_close();
+            $result=$integrations->execute($id,'entities');
+            json_response(['ok'=>true,'entities'=>$result['entities']??[]]);
+
+        case 'automation/action':
+            require_method('POST');
+            $input=json_body();$id=trim((string)($input['id']??''));
+            if(!$auth->canIntegration($id))json_response(['ok'=>false,'error'=>'No permission for this integration.'],403);
+            $integration=$integrations->full($id);
+            if(!$integration||!in_array($integration['type'],['iobroker','nodered'],true))throw new RuntimeException('Automation integration not found.');
+            $entityId=(string)($input['entity_id']??'');$exposed=false;
+            foreach($db->widgets() as $w){$c=$w['config']??[];
+                if($w['type']==='automation-entities'&&($c['integration_id']??'')===$id&&($c['show_controls']??true)&&in_array($entityId,$c['entity_ids']??[],true)){$exposed=true;break;}
+            }
+            if(!$exposed)json_response(['ok'=>false,'error'=>'This data point is not exposed for control.'],403);
+            $payload=['entity_id'=>$entityId,'action'=>(string)($input['action']??'')];
+            if(array_key_exists('value',$input))$payload['value']=$input['value'];
+            session_write_close();
+            $result=$integrations->execute($id,'action:'.base64_encode(json_encode($payload,JSON_UNESCAPED_SLASHES)));
+            json_response(['ok'=>true,'data'=>$result]);
 
         case 'homeassistant/entities':
             require_method('POST');
@@ -374,7 +402,7 @@ function visible_widgets(array $ctx): array
     if($auth->isAdmin()) return $widgets;
     return array_values(array_filter($widgets,function($w)use($auth){
         if(($w['type']??'')==='ipmanager-summary') return $auth->canIpManager();
-        if(in_array(($w['type']??''),['integration-summary','homeassistant-entities'],true)) return $auth->canIntegration((string)($w['config']['integration_id']??''));
+        if(in_array(($w['type']??''),['integration-summary','homeassistant-entities','automation-entities'],true)) return $auth->canIntegration((string)($w['config']['integration_id']??''));
         return true;
     }));
 }
@@ -383,7 +411,7 @@ function require_widget_access(Database $db, $auth, string $id): void
 {
     foreach($db->widgets() as $w){if($w['id']!==$id)continue;
         if(($w['type']??'')==='ipmanager-summary'&&!$auth->canIpManager())json_response(['ok'=>false,'error'=>'No permission for IP Manager.'],403);
-        if(in_array(($w['type']??''),['integration-summary','homeassistant-entities'],true)&&!$auth->canIntegration((string)($w['config']['integration_id']??'')))json_response(['ok'=>false,'error'=>'No permission for this integration.'],403);
+        if(in_array(($w['type']??''),['integration-summary','homeassistant-entities','automation-entities'],true)&&!$auth->canIntegration((string)($w['config']['integration_id']??'')))json_response(['ok'=>false,'error'=>'No permission for this integration.'],403);
         return;
     }
 }
@@ -897,13 +925,13 @@ function create_widget(Database $db, $addons, array $input): array
     }
     $canvas = $db->setting('layout_engine', 'legacy24') === 'canvas8';
     if ($canvas) {
-        $minW = in_array($type, ['app','app-group','homeassistant-entities'], true) ? 11 : 20;
-        $minH = in_array($type, ['app','app-group','homeassistant-entities'], true) ? 9 : 11;
+        $minW = in_array($type, ['app','app-group','homeassistant-entities','automation-entities'], true) ? 11 : 20;
+        $minH = in_array($type, ['app','app-group','homeassistant-entities','automation-entities'], true) ? 9 : 11;
         $w = max($minW, min(512, (int)($input['w'] ?? 42)));
         $h = max($minH, min(512, (int)($input['h'] ?? 26)));
         $x = max(0, min(512-$w, (int)($input['x'] ?? 0)));
     } else {
-        $minW = in_array($type, ['app','app-group','homeassistant-entities'], true) ? 2 : 4;
+        $minW = in_array($type, ['app','app-group','homeassistant-entities','automation-entities'], true) ? 2 : 4;
         $w = max($minW, min(24, (int)($input['w'] ?? 6)));
         $h = max(4, min(32, (int)($input['h'] ?? 8)));
         $x = max(0, min(24-$w, (int)($input['x'] ?? 0)));
@@ -972,13 +1000,13 @@ function save_layout(Database $db, mixed $items, string $engine = ''): void
 
         $canvas = $engine === 'canvas8' || ($engine === '' && $db->setting('layout_engine', 'legacy24') === 'canvas8');
         if ($canvas) {
-            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities'], true) ? 11 : 20;
-            $minH = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities'], true) ? 9 : 11;
+            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities','automation-entities'], true) ? 11 : 20;
+            $minH = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities','automation-entities'], true) ? 9 : 11;
             $w = max($minW, min(512, (int)($item['w'] ?? $layout[$id]['w'])));
             $h = max($minH, min(512, (int)($item['h'] ?? $layout[$id]['h'])));
             $x = max(0, min(512-$w, (int)($item['x'] ?? $layout[$id]['x'])));
         } else {
-            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities'], true) ? 2 : 4;
+            $minW = in_array(($layout[$id]['type'] ?? ''), ['app','app-group','homeassistant-entities','automation-entities'], true) ? 2 : 4;
             $w = max($minW, min(24, (int)($item['w'] ?? $layout[$id]['w'])));
             $h = max(4, min(32, (int)($item['h'] ?? $layout[$id]['h'])));
             $x = max(0, min(24-$w, (int)($item['x'] ?? $layout[$id]['x'])));
@@ -1163,6 +1191,15 @@ function widget_data(Database $db, $addons, $integrations, string $id, bool $cac
             $summary=$integrations->execute($integrationId,'summary');
             $history=persist_integration_widget_data($db,$integration,$summary);
             return ['kind'=>'integration','integration'=>$integration,'summary'=>$summary,'history'=>$history,'cached'=>false,'fetched_at'=>time(),'cache_age'=>0];
+        case 'automation-entities':
+            $integrationId=trim((string)($config['integration_id']??''));
+            $integration=$integrations->full($integrationId);
+            if(!$integration||!in_array($integration['type'],['iobroker','nodered'],true))throw new RuntimeException('Automation integration not found.');
+            if($cachedOnly)return widget_cache_read($db,$id);
+            $ids=is_array($config['entity_ids']??null)?array_values(array_slice($config['entity_ids'],0,8)):[];
+            if(!$ids)throw new RuntimeException('No data points selected.');
+            $result=$integrations->execute($integrationId,'states:'.base64_encode(json_encode($ids,JSON_UNESCAPED_SLASHES)));
+            return widget_cache_write($db,$id,['kind'=>'automation','entities'=>$result['entities']??[], 'display'=>(string)($config['display']??'auto'),'show_icons'=>$config['show_icons']??true,'show_controls'=>$config['show_controls']??true]);
         case 'homeassistant-entities':
             $integrationId = trim((string)($config['integration_id'] ?? ''));
             if ($integrationId === '') throw new RuntimeException('No Home Assistant integration selected.');
@@ -1305,11 +1342,11 @@ function import_data(array $ctx, mixed $data): void
                 $rawH=(int)($widget['h']??($importCanvas?26:($importGridScale===4?2:8)));
                 $rawY=(int)($widget['y']??0);
                 if ($importCanvas) {
-                    $minW=in_array($type,['app','app-group','homeassistant-entities'],true)?11:20;
-                    $minH=in_array($type,['app','app-group','homeassistant-entities'],true)?9:11;
+                    $minW=in_array($type,['app','app-group','homeassistant-entities','automation-entities'],true)?11:20;
+                    $minH=in_array($type,['app','app-group','homeassistant-entities','automation-entities'],true)?9:11;
                     $w=max($minW,min(512,$rawW));$h=max($minH,min(512,$rawH));$x=max(0,min(512-$w,$rawX));$y=max(0,$rawY);
                 } else {
-                    $minW=in_array($type,['app','app-group','homeassistant-entities'],true)?2:4;
+                    $minW=in_array($type,['app','app-group','homeassistant-entities','automation-entities'],true)?2:4;
                     $w=max($minW,min(24,$rawW*$importColumnScale));$h=max(4,min(32,$rawH*$importGridScale));$x=max(0,min(24-$w,$rawX*$importColumnScale));$y=max(0,$rawY*$importGridScale);
                 }
                 $title=mb_substr(trim(strip_tags((string)($widget['title']??''))),0,100);

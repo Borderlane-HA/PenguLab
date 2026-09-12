@@ -1,0 +1,85 @@
+{
+  "id": "nodered",
+  "name": "Node-RED",
+  "version": "1.0.0",
+  "category": "Smart Home",
+  "author": "Borderlane-HA",
+  "description": "Ausgewählte Datenpunkte anzeigen und steuern. Benötigt den mitgelieferten PenguLab Bridge Flow für Node-RED 5.x.",
+  "icon": "home",
+  "connector": "connector.php",
+  "permissions": [
+    "network.http",
+    "secrets.read",
+    "service.control"
+  ],
+  "integration": {
+    "type": "nodered",
+    "name": "Node-RED",
+    "description": "PenguLab Bridge",
+    "fields": [
+      {
+        "key": "base_url",
+        "label": "PenguLab Bridge URL",
+        "type": "url",
+        "required": true,
+        "placeholder": "http://nodered.local:1880/pengulab"
+      },
+      {
+        "key": "access_token",
+        "label": "PenguLab Bridge Token",
+        "type": "password",
+        "secret": true,
+        "required": true
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "widget_options": [
+      {
+        "key": "refresh_interval",
+        "label": "Aktualisierung",
+        "type": "select",
+        "default": "10",
+        "options": [
+          {
+            "value": "5",
+            "label": "alle 5 Sekunden"
+          },
+          {
+            "value": "10",
+            "label": "alle 10 Sekunden"
+          },
+          {
+            "value": "15",
+            "label": "alle 15 Sekunden"
+          },
+          {
+            "value": "30",
+            "label": "alle 30 Sekunden"
+          },
+          {
+            "value": "60",
+            "label": "alle 60 Sekunden"
+          }
+        ]
+      }
+    ]
+  },
+  "widgets": [
+    {
+      "type": "automation-entities",
+      "integrationType": "nodered",
+      "name": "Node-RED Datenpunkte",
+      "description": "Werte, Schalter und Aktionen",
+      "icon": "home",
+      "defaultSize": [
+        4,
+        2
+      ]
+    }
+  ]
+}

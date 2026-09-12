@@ -22,7 +22,7 @@ html[data-theme="dark"]{--bg:#11141b;--surface:#191d26;--surface-2:#1e232d;--sur
 .widget-type-app .widget-head{display:none}
 .widget-type-app .widget-body{height:100%;padding:10px}
 .editing .widget-type-app .widget-head{display:flex;position:absolute;z-index:9;left:7px;right:7px;top:7px;height:30px;padding:0 6px;border-radius:10px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(8px);border:1px solid var(--border)}
-.editing .widget-type-app .widget-body{height:100%;padding:10px;padding-top:42px}
+
 .widget-type-app{cursor:pointer}
 .widget-type-app .app-widget{width:100%;height:100%;display:flex;align-items:center;gap:12px;border-radius:14px}
 .widget-type-app .app-icon{width:48px;height:48px;flex-basis:48px;border-radius:14px}
@@ -179,9 +179,9 @@ html[data-theme="dark"]{--bg:#11141b;--surface:#191d26;--surface-2:#1e232d;--sur
 .widget-type-app.app-widget-xs .app-layout-icon .app-icon{width:36px;height:36px;flex-basis:36px}
 .editing .widget-type-app.app-widget-xs .widget-head{left:4px;right:4px;top:4px;height:25px;padding:0 3px;background:color-mix(in srgb,var(--surface) 82%,transparent)}
 .editing .widget-type-app.app-widget-xs .widget-title{display:none}
-.editing .widget-type-app.app-widget-xs .widget-body{padding:5px;padding-top:29px}
-.editing .widget-type-app.app-widget-xs .app-icon{width:24px;height:24px;flex-basis:24px}
-.editing .widget-type-app.app-widget-xs .app-widget-name{font-size:10px!important}
+
+
+
 .sparkline-empty{display:flex;align-items:center;height:30px;color:var(--soft);font-size:8px}
 
 /* PenguLab 2.0: collapsible sidebar + local users */
@@ -262,7 +262,7 @@ body.sidebar-collapsed .sidebar-open-btn{display:grid}
 
 /* PenguLab 2.2: title-free Home Assistant cards + infrastructure integrations */
 .widget-no-head .widget-body{height:100%;padding-top:9px}
-.editing .widget-no-head .widget-body{height:calc(100% - 42px)}
+
 .infra-widget{height:100%;min-height:0;display:flex;flex-direction:column}
 .infra-metrics{height:auto;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));align-content:start;gap:6px}
 .infra-metrics .metric{padding:8px 9px}
@@ -640,7 +640,7 @@ body{background:var(--shell-highlight),var(--bg)}
 .widget-type-app-group .widget-head{display:none}
 .widget-type-app-group .widget-body{height:100%;padding:9px}
 .editing .widget-type-app-group .widget-head{display:flex;position:absolute;z-index:9;left:7px;right:7px;top:7px;height:30px;padding:0 6px;border-radius:10px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(8px);border:1px solid var(--border)}
-.editing .widget-type-app-group .widget-body{height:100%;padding:42px 9px 9px}
+
 .app-group-widget{width:100%;height:100%;border:0;background:transparent;color:var(--text);padding:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;text-align:center}
 .app-group-preview{position:relative;width:58px;height:58px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:4px;padding:6px;border-radius:17px;background:linear-gradient(145deg,var(--surface-2),var(--primary-soft));border:1px solid color-mix(in srgb,var(--primary) 13%,var(--border));box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 65%,transparent)}
 .app-group-mini-icon{position:relative;display:grid;place-items:center;min-width:0;min-height:0;border-radius:7px;overflow:hidden;background:var(--surface);border:1px solid color-mix(in srgb,var(--border) 72%,transparent);font-size:8px;font-weight:850;color:var(--primary)}
@@ -695,3 +695,29 @@ body{background:var(--shell-highlight),var(--bg)}
 .npmplus-host-list{display:grid;gap:5px;max-height:390px;overflow:auto;padding-right:2px}.npmplus-host-row{display:grid;grid-template-columns:18px minmax(0,1fr) auto minmax(80px,130px);align-items:center;gap:9px;min-height:54px;padding:7px 9px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);cursor:pointer;transition:border-color .14s ease,background .14s ease}.npmplus-host-row:hover{border-color:color-mix(in srgb,var(--primary) 35%,var(--border));background:color-mix(in srgb,var(--primary-soft) 38%,var(--surface-2))}.npmplus-host-row.disabled{opacity:.55;cursor:not-allowed}.npmplus-host-main{min-width:0}.npmplus-host-main strong,.npmplus-host-main small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.npmplus-host-main strong{font-size:10px}.npmplus-host-main small{font-size:8px;color:var(--muted);margin-top:2px}.npmplus-host-badges{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}.npm-badge{display:inline-flex;align-items:center;height:19px;padding:0 6px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:7px;font-style:normal;font-weight:800;letter-spacing:.03em}.npm-badge.https{color:var(--success);border-color:color-mix(in srgb,var(--success) 25%,var(--border));background:color-mix(in srgb,var(--success) 7%,var(--surface))}.npm-badge.disabled{color:var(--danger)}.npm-badge.imported{color:var(--primary);border-color:color-mix(in srgb,var(--primary) 28%,var(--border));background:var(--primary-soft)}.npm-badge.existing{color:var(--warning)}.npmplus-host-state{font-size:8px;color:var(--muted);text-align:right;line-height:1.25}
 @media(max-width:760px){.npmplus-import-tools{grid-template-columns:1fr}.npmplus-import-tools .npm-update-existing{grid-column:auto}.npmplus-import-head{align-items:flex-end}.npmplus-host-row{grid-template-columns:18px minmax(0,1fr) auto}.npmplus-host-state{display:none}.npmplus-host-badges{max-width:100px}.npmplus-host-list{max-height:52vh}}
 .npmplus-import-loading .spinner{width:24px;height:24px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--primary);animation:npmspin .75s linear infinite}@keyframes npmspin{to{transform:rotate(360deg)}}
+
+/* 2.10: edit chrome never consumes content space. */
+.widget-editor-controls{display:none;position:absolute;inset:0;pointer-events:none;z-index:25}
+.editing .widget-editor-controls{display:block}
+.widget-editor-controls .widget-drag-handle{position:absolute;top:-10px;left:-10px;background:var(--surface);border:1px solid var(--border);border-radius:50%;pointer-events:auto;opacity:1}
+.widget-editor-controls .widget-menu{pointer-events:auto;top:-14px;right:-10px}
+.editing .widget:not(.dragging){animation:none}
+.editing .widget:focus{outline:2px solid var(--primary);outline-offset:2px;z-index:26}
+.editing .widget-type-app .widget-head,.editing .widget-type-app-group .widget-head{display:none}
+.editing .widget-head{cursor:inherit}
+.grid-reflowing.canvas-layout .widget:not(.dragging){transition:none}
+.widget.dragging{will-change:left,top;z-index:40}
+.layout-guides{position:absolute;inset:0;z-index:60;pointer-events:none;overflow:visible}
+.layout-guide{position:absolute;background:var(--primary);opacity:.75}
+.layout-guide.x{top:0;bottom:0;width:1px}.layout-guide.y{left:0;right:0;height:1px}
+.layout-measure{position:absolute;white-space:nowrap;font-size:11px;font-weight:700;background:var(--primary);color:white;padding:4px 7px;border-radius:5px}
+@media(max-width:760px){.widget-geometry{display:none!important}}
+
+.automation-number{width:80px;max-width:40%;height:30px;min-width:45px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);padding:4px}
+
+/* Show secondary edit tools on the card being worked on. Touch keeps them visible. */
+@media(hover:hover){
+ .editing .widget-editor-controls .widget-menu{opacity:0;pointer-events:none}
+ .editing .widget:hover .widget-editor-controls .widget-menu,.editing .widget:focus-within .widget-editor-controls .widget-menu{opacity:1;pointer-events:auto}
+}
+.widget-type-automation-entities .ha-entity-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))}

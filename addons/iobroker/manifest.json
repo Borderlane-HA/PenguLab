@@ -1,0 +1,96 @@
+{
+  "id": "iobroker",
+  "name": "ioBroker",
+  "version": "1.0.0",
+  "category": "Smart Home",
+  "author": "Borderlane-HA",
+  "description": "Ausgewählte Datenpunkte anzeigen und steuern. Benötigt ioBroker REST-API 4.x.",
+  "icon": "home",
+  "connector": "connector.php",
+  "permissions": [
+    "network.http",
+    "secrets.read",
+    "service.control"
+  ],
+  "integration": {
+    "type": "iobroker",
+    "name": "ioBroker",
+    "description": "REST API",
+    "fields": [
+      {
+        "key": "base_url",
+        "label": "REST-API URL",
+        "type": "url",
+        "required": true,
+        "placeholder": "http://iobroker.local:8093"
+      },
+      {
+        "key": "username",
+        "label": "API Benutzer (leer bei deaktivierter Authentifizierung)",
+        "type": "text"
+      },
+      {
+        "key": "password",
+        "label": "API Passwort",
+        "type": "password",
+        "secret": true
+      },
+      {
+        "key": "state_pattern",
+        "label": "Datenpunkt-Filter",
+        "type": "text",
+        "default": "0_userdata.0.*",
+        "placeholder": "0_userdata.0.*"
+      },
+      {
+        "key": "verify_tls",
+        "label": "Verify TLS certificate",
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "widget_options": [
+      {
+        "key": "refresh_interval",
+        "label": "Aktualisierung",
+        "type": "select",
+        "default": "10",
+        "options": [
+          {
+            "value": "5",
+            "label": "alle 5 Sekunden"
+          },
+          {
+            "value": "10",
+            "label": "alle 10 Sekunden"
+          },
+          {
+            "value": "15",
+            "label": "alle 15 Sekunden"
+          },
+          {
+            "value": "30",
+            "label": "alle 30 Sekunden"
+          },
+          {
+            "value": "60",
+            "label": "alle 60 Sekunden"
+          }
+        ]
+      }
+    ]
+  },
+  "widgets": [
+    {
+      "type": "automation-entities",
+      "integrationType": "iobroker",
+      "name": "ioBroker Datenpunkte",
+      "description": "Werte, Schalter und Aktionen",
+      "icon": "home",
+      "defaultSize": [
+        4,
+        2
+      ]
+    }
+  ]
+}
