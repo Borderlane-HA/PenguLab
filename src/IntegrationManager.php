@@ -113,6 +113,7 @@ final class IntegrationManager
             }
         }
 
+        $this->db->pdo()->prepare('DELETE FROM integration_widget_cache WHERE integration_id=?')->execute([$id]);
         return $this->publicRow($this->row($id));
     }
 
@@ -123,7 +124,7 @@ final class IntegrationManager
 
     public function test(string $id): array
     {
-        $result = $this->execute($id, 'summary');
+        $result = $this->executeUncached($id, 'summary');
         $this->updateStatus($id, 'online', '');
         return $result;
     }
@@ -138,10 +139,32 @@ final class IntegrationManager
         if (!$integration || !in_array((string)$integration['type'], ['pihole', 'adguardhome'], true)) {
             throw new RuntimeException('This integration does not expose protection controls.');
         }
-        return $this->execute($id, 'action:' . $action);
+        $result=$this->execute($id, 'action:' . $action);
+        $this->db->pdo()->prepare('DELETE FROM integration_widget_cache WHERE integration_id=?')->execute([$id]);
+        return $result;
     }
 
     public function execute(string $id, string $mode = 'summary'): array
+    {
+        if ($mode !== 'summary') return $this->executeUncached($id,$mode);
+        // Shared short-lived snapshot: dashboard and collector do not query twice.
+        $lockDir=(getenv('PENGULAB_DATA_DIR') ?: dirname(__DIR__).'/data').'/locks';
+        if(!is_dir($lockDir)) @mkdir($lockDir,0770,true);
+        $lock=fopen($lockDir.'/summary-'.hash('sha256',$id).'.lock','c');
+        if(!$lock)throw new RuntimeException('Cannot create integration lock.');
+        try{
+            if(!flock($lock,LOCK_EX))throw new RuntimeException('Cannot lock integration snapshot.');
+            $q=$this->db->pdo()->prepare('SELECT summary_json,fetched_at FROM integration_widget_cache WHERE integration_id=?');$q->execute([$id]);$row=$q->fetch();
+            $integration=$this->row($id);
+            if(!$integration||!$integration['enabled']||!$this->manifestForType($integration['type']))throw new RuntimeException('Integration unavailable.');
+            if($row && time()-(int)$row['fetched_at']<30){$cached=json_decode($row['summary_json'],true);if(is_array($cached))return $cached;}
+            $data=$this->executeUncached($id,$mode);
+            $this->db->pdo()->prepare('INSERT INTO integration_widget_cache(integration_id,summary_json,fetched_at) VALUES(?,?,?) ON CONFLICT(integration_id) DO UPDATE SET summary_json=excluded.summary_json,fetched_at=excluded.fetched_at')->execute([$id,json_encode($data,JSON_THROW_ON_ERROR),time()]);
+            return $data;
+        }finally{flock($lock,LOCK_UN);fclose($lock);}
+    }
+
+    private function executeUncached(string $id, string $mode = 'summary'): array
     {
         $integration = $this->full($id);
         if (!$integration) throw new RuntimeException('Integration not found.');

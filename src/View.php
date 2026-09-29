@@ -24,6 +24,7 @@ function icon(string $name): string
 
 function renderSidebar(AddonManager $addons, string $active = 'dashboard', ?Auth $auth = null, string $version = 'dev'): void
 {
+    $ops = $addons->enabled('penguops');
     $ipm = $addons->enabled('ipmanager') && (!$auth || $auth->canIpManager());
     $admin = !$auth || $auth->isAdmin();
     $hasIntegrations = !$auth || $auth->isAdmin() || count($auth->user()['permissions']['integrations'] ?? []) > 0;
@@ -40,10 +41,11 @@ function renderSidebar(AddonManager $addons, string $active = 'dashboard', ?Auth
         <?php if ($hasIntegrations): ?><a class="nav-item <?= $active==='integrations'?'active':'' ?>" href="./#integrations"><?= icon('plug') ?><span>Integrationen</span></a><?php endif; ?>
         <?php if ($admin): ?><a class="nav-item <?= $active==='hub'?'active':'' ?>" href="./#hub"><?= icon('store') ?><span>PenguHub</span></a><?php endif; ?>
       </nav>
-      <?php if ($ipm): ?>
+      <?php if ($ipm || $ops): ?>
       <div class="nav-section-label">ADD-ONS</div>
       <nav class="primary-nav addon-nav">
-        <a class="nav-item <?= $active==='ipmanager'?'active':'' ?>" href="./?addon=ipmanager"><?= icon('network') ?><span>IP Manager</span></a>
+        <?php if ($ops): ?><a class="nav-item <?= $active==='penguops'?'active':'' ?>" href="./?addon=penguops"><?= icon('dashboard') ?><span>PenguOps</span></a><?php endif; ?>
+        <?php if ($ipm): ?><a class="nav-item <?= $active==='ipmanager'?'active':'' ?>" href="./?addon=ipmanager"><?= icon('network') ?><span>IP Manager</span></a><?php endif; ?>
       </nav>
       <?php endif; ?>
       <div class="sidebar-spacer"></div>

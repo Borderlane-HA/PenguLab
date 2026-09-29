@@ -1,0 +1,27 @@
+{
+  "id": "penguops",
+  "name": "PenguOps",
+  "version": "1.0.0",
+  "category": "Operations",
+  "author": "Borderlane-HA",
+  "description": "Homelab Health Center mit Regeln, Verlauf und AI Model Hub.",
+  "icon": "network",
+  "entrypoint": "page.php",
+  "api": "api.php",
+  "permissions": [
+    "storage.addon",
+    "network.integrations",
+    "ai.analysis"
+  ],
+  "widgets": [
+    {
+      "type": "penguops-health",
+      "name": "Homelab Health",
+      "description": "Health Score und offene Hinweise",
+      "defaultSize": [
+        4,
+        2
+      ]
+    }
+  ]
+}

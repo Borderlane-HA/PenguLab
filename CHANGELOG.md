@@ -1,3 +1,7 @@
+# 2.11.0 · 2026-09-29
+
+Optionales PenguOps Health Center mit nachvollziehbarem Score, Regeln, Befundverlauf, Hintergrund-Collector und AI Model Hub für Ollama, OpenAI, Claude, Gemini, IONOS und xAI. Details: [Release Notes](RELEASE_NOTES_2.11.0.md).
+
 # 2.10.0 · 2026-09-12
 
 Schnellerer Dashboard-Editor, magnetisches Ausrichten, identische Editor-Geometrie, reparierter Polling-Lebenszyklus sowie ioBroker- und Node-RED-Datenpunkt-Widgets. Details: [Release Notes](RELEASE_NOTES_2.10.0.md).

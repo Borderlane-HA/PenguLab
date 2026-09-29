@@ -20,6 +20,12 @@ It is built for people who want a fast overview, useful widgets and a setup that
 - **App groups** – drag one app onto another to create a compact iPhone/iPad-style folder and keep busy dashboards tidy.
 - **Private by design** – your data stays on your own server.
 
+## Overview
+
+<p align="center">
+  <img src="docs/images/dashboard-overview.png" alt="PenguLab dashboard overview" width="100%">
+</p>
+
 ## What you can add
 
 PenguLab stays lightweight, but it can grow with your homelab through **PenguHub**.
@@ -159,6 +165,12 @@ Please change the password after your first login.
 ## License
 
 See [LICENSE](LICENSE).
+
+## 2.11.0: PenguOps Health Center
+
+PenguOps ist ein optionales PenguHub-Add-on für eine regelbasierte Teilbewertung des Homelabs. Es verwendet vorhandene Proxmox-, Docker-, Portainer-, Home-Assistant-, PBS- und weitere Integrationen, führt einen Befundverlauf und kann den freigegebenen Snapshot über Ollama, OpenAI, Claude, Gemini, IONOS AI Model Hub oder xAI erklären lassen.
+
+Das Add-on wird nach dem Update im PenguHub installiert. Docker startet Collector und AI-Worker automatisch. Hinweise für manuelle Installationen, Bewertungsgrenzen und Datenschutz stehen in den [Release Notes](RELEASE_NOTES_2.11.0.md).
 
 ## 2.10.0: Editor und Smart Home
 

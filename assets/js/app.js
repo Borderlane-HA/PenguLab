@@ -297,6 +297,7 @@
     if (widget.type === 'clock') return 'Zeit';
     if (widget.type === 'note') return 'Notiz';
     if (widget.type === 'rss') return 'News';
+    if (widget.type === 'penguops-health') return 'Homelab Health';
     if (widget.type === 'ipmanager-summary') return 'IP Manager';
     if (widget.type === 'integration-summary') {
       const i = (state.boot.integrations || []).find(x => x.id === widget.config?.integration_id); return i?.name || 'Service';
@@ -330,7 +331,7 @@
         // Reuse the live DOM when entering/leaving the editor, with no request burst.
       }else if(remote){loadCachedWidget(widget).finally(()=>{if(generation===state.widgetGeneration)loadOneWidget(widget,true);});}
       else loadOneWidget(widget);
-      if(remote||['rss','ipmanager-summary'].includes(widget.type))schedule(widget,widget.type==='rss'?300000:remote?integrationRefreshMs(widget):60000);
+      if(remote||['rss','ipmanager-summary','penguops-health'].includes(widget.type))schedule(widget,widget.type==='rss'?300000:remote?integrationRefreshMs(widget):60000);
     }
   }
 
@@ -386,6 +387,10 @@
       const apps = data.apps || groupApps(widget); const preview = apps.slice(0,4);
       body.innerHTML = `<button class="app-group-widget" type="button" title="${attr(widget.title || 'Apps')} öffnen"><span class="app-group-preview">${preview.map(groupMiniIcon).join('')}${apps.length>4?`<span class="app-group-count">+${apps.length-4}</span>`:''}</span><span class="app-group-name">${esc(widget.title || 'Apps')}</span><span class="app-group-meta">${apps.length} App${apps.length===1?'':'s'}</span></button>`;
       body.querySelector('.app-group-widget')?.addEventListener('click', e=>{e.preventDefault();e.stopPropagation();if(!state.editMode)openAppGroup(widget);});
+      return;
+    }
+    if (data.kind === 'penguops') {
+      body.innerHTML=`<a href="?addon=penguops" class="metric"><div class="metric-label">Homelab Health · Teilbewertung</div><div class="metric-value">${data.score??'—'} / 100</div><div>${data.critical} kritisch · ${data.warning} Warnungen · ${data.unknown} unbekannt</div><small>${data.assessed}/${data.total} Dienste bewertet · Health Center →</small></a>`;
       return;
     }
     if (data.kind === 'ipmanager') {
@@ -916,6 +921,7 @@
       {key:'clock',name:'Clock',desc:'Uhrzeit und Datum.',icon:'C'},
       {key:'note',name:'Note',desc:'Kurze Notiz direkt auf dem Dashboard.',icon:'N'},
       installedTypes.has('rss') ? {key:'rss',name:'RSS / Atom',desc:'News und Feeds anzeigen.',icon:'R'} : null,
+      installedTypes.has('penguops-health') ? {key:'penguops-health',name:'Homelab Health',desc:'PenguOps: Score und Befunde.',icon:'♥'} : null,
       installedTypes.has('ipmanager-summary') ? {key:'ipmanager-summary',name:'IP Manager',desc:'Netze und dokumentierte Geräte.',icon:'IP'} : null,
       ...integrations.filter(i=>i.enabled).map(i=>({key:'integration:'+i.id,name:i.name,desc:['homeassistant','iobroker','nodered'].includes(i.type)?'Sensoren, Schalter, Lichter und Cover auswählen.':`${i.type} Status`,icon:initials(i.name)})),
     ].filter(Boolean);
@@ -926,7 +932,7 @@
 
   function configureWidgetChoice(key) {
     closeModal();
-    if (key === 'clock' || key === 'ipmanager-summary') { createWidget({type:key,w:(key==='clock'?3:4)*2,h:2*GRID_SCALE}); return; }
+    if (key === 'clock' || key === 'ipmanager-summary' || key === 'penguops-health') { createWidget({type:key,w:(key==='clock'?3:4)*2,h:2*GRID_SCALE}); return; }
     if (key.startsWith('integration:')) {
       const id=key.split(':')[1];const integration=(state.boot.integrations||[]).find(i=>i.id===id);if(['homeassistant','iobroker','nodered'].includes(integration?.type)){openHomeAssistantWidgetModal(id);return;}const catalog=(state.boot.widgetCatalog||[]).find(c=>c.type==='integration-summary'&&c.integrationType===integration?.type);const size=catalog?.defaultSize||[4,2];createWidget({type:'integration-summary',title:integration?.name||'',config:{integration_id:id},w:size[0]*2,h:size[1]*GRID_SCALE});return;
     }
@@ -1095,7 +1101,7 @@
     const upload=`<section class="section-card addon-upload-card"><div><div class="eyebrow">ADMIN</div><h3>Integration hochladen</h3><p>Installiere ein PenguHub-Paket als ZIP. Hochgeladene Pakete liegen persistent unter <code>/data/addons</code> und bleiben bei PenguLab-Updates erhalten.</p><div class="addon-upload-warning">Ein Integrationspaket kann serverseitigen PHP-Code enthalten. Lade nur Pakete hoch, deren Quelle du vertraust.</div></div><div class="addon-upload-actions"><input id="addonUploadFile" type="file" accept=".zip,application/zip" hidden><label class="btn" for="addonUploadFile">ZIP auswählen</label><span id="addonUploadName" class="addon-upload-name">Keine Datei gewählt</span><button class="btn primary" id="addonUploadBtn" disabled>Hochladen & installieren</button></div></section>`;
     appRoot.innerHTML=pageHead('Extensions','PenguHub','Funktionen werden als klar getrennte Pakete installiert. Der PenguLab-Core bleibt klein und stabil.')+
       `<section class="section-card hub-hero"><div class="hub-hero-icon">P</div><div><h2>Baue dir genau dein PenguLab</h2><p>IP Management, DNS-Monitoring, Firewall-Status, RSS und API-Anbindungen sind Erweiterungen – nicht fest im Dashboard verdrahtet.</p></div></section>`+upload+
-      `<div class="hub-grid">${addons.map(a=>`<article class="section-card hub-card"><div class="hub-head"><div class="package-icon" data-letter="${attr(initials(a.name))}"></div><div><div class="hub-name">${esc(a.name)}</div><div class="hub-meta">${esc(a.category||'Addon')} · v${esc(a.version)}</div></div><div class="hub-badges">${a.uploaded?'<span class="badge custom">Uploaded</span>':''}${a.enabled?'<span class="badge installed">Installed</span>':'<span class="badge">Available</span>'}</div></div><div class="hub-description">${esc(a.description||'')}</div><div class="hub-permissions">${(a.permissions||[]).map(p=>esc(p)).join(' · ')}</div><div class="hub-actions">${a.enabled?(a.id==='ipmanager'?`<a class="btn small soft" href="?addon=ipmanager">Öffnen</a>`:'')+`<button class="btn small" data-uninstall-addon="${attr(a.id)}">Deaktivieren</button>`:`<button class="btn small primary" data-install-addon="${attr(a.id)}">Installieren</button>`}${a.uploaded?`<button class="btn small danger" data-delete-uploaded="${attr(a.id)}">Paket löschen</button>`:''}</div></article>`).join('')}</div>`;
+      `<div class="hub-grid">${addons.map(a=>`<article class="section-card hub-card"><div class="hub-head"><div class="package-icon" data-letter="${attr(initials(a.name))}"></div><div><div class="hub-name">${esc(a.name)}</div><div class="hub-meta">${esc(a.category||'Addon')} · v${esc(a.version)}</div></div><div class="hub-badges">${a.uploaded?'<span class="badge custom">Uploaded</span>':''}${a.enabled?'<span class="badge installed">Installed</span>':'<span class="badge">Available</span>'}</div></div><div class="hub-description">${esc(a.description||'')}</div><div class="hub-permissions">${(a.permissions||[]).map(p=>esc(p)).join(' · ')}</div><div class="hub-actions">${a.enabled?(['ipmanager','penguops'].includes(a.id)?`<a class="btn small soft" href="?addon=${attr(a.id)}">Öffnen</a>`:'')+`<button class="btn small" data-uninstall-addon="${attr(a.id)}">Deaktivieren</button>`:`<button class="btn small primary" data-install-addon="${attr(a.id)}">Installieren</button>`}${a.uploaded?`<button class="btn small danger" data-delete-uploaded="${attr(a.id)}">Paket löschen</button>`:''}</div></article>`).join('')}</div>`;
     const file=$('#addonUploadFile'),button=$('#addonUploadBtn'),name=$('#addonUploadName');
     if(file&&button){file.onchange=()=>{const f=file.files?.[0];name.textContent=f?`${f.name} · ${Math.max(1,Math.round(f.size/1024))} KB`:'Keine Datei gewählt';button.disabled=!f;};button.onclick=async()=>{const f=file.files?.[0];if(!f)return;button.disabled=true;button.textContent='Prüfe & installiere…';try{await uploadAddonPackage(f);toast('PenguHub-Paket installiert.');location.reload();}catch(e){button.disabled=false;button.textContent='Hochladen & installieren';toast(e.message,'error')}};}
     $$('[data-install-addon]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Installiere…';try{await api('addons/install',{body:{id:b.dataset.installAddon}});toast('Paket installiert.');location.reload();}catch(e){b.disabled=false;toast(e.message,'error')}});

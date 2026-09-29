@@ -33,6 +33,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         if (!$endpoints) throw new RuntimeException('The selected Portainer Environment ID is not accessible.');
     }
 
+    $opsContainers=[];$opsPartial=false;
     $containersTotal=0; $containersRunning=0; $envRows=[];
     foreach ($endpoints as $endpoint) {
         if (!is_array($endpoint)) continue;
@@ -43,12 +44,13 @@ return static function(array $integration, HttpClient $http, string $mode='summa
             try {
                 $containers=$request('/api/endpoints/' . $id . '/docker/containers/json?all=true');
                 if (is_array($containers)) {
+                    foreach($containers as $c)$opsContainers[]=['id'=>$id.':'.ltrim((string)($c['Names'][0]??$c['Id']??''),'/'),'name'=>ltrim((string)($c['Names'][0]??''),'/'),'state'=>(string)($c['State']??'unknown'),'status'=>(string)($c['Status']??'')];
                     $row['containers']=count($containers);
                     $row['running']=count(array_filter($containers, static fn($c): bool => is_array($c) && strtolower((string)($c['State'] ?? '')) === 'running'));
                     $containersTotal += $row['containers'];
                     $containersRunning += $row['running'];
                 }
-            } catch (Throwable $e) { /* keep endpoint visible even if Docker proxy is unavailable */ }
+            } catch (Throwable $e) { $opsPartial=true; }
         }
         $envRows[]=$row;
     }
@@ -69,6 +71,7 @@ return static function(array $integration, HttpClient $http, string $mode='summa
         $rows[]=['label'=>$e['name'],'value'=>$e['online']?'Online':'Offline','meta'=>$meta];
     }
     return [
+        'containers'=>$opsContainers,'ops_partial'=>$opsPartial,
         'service'=>'Portainer',
         'status'=>'Online',
         'version'=>(string)($status['Version'] ?? $status['version'] ?? ''),

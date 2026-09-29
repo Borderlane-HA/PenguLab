@@ -32,6 +32,8 @@ if ($method !== 'GET') {
     }
 }
 
+if (!in_array($route,['addon/penguops/preview','addon/penguops/analyze'],true) && session_status()===PHP_SESSION_ACTIVE) session_write_close();
+
 try {
     switch ($route) {
         case 'bootstrap':
@@ -1224,6 +1226,10 @@ function widget_data(Database $db, $addons, $integrations, string $id, bool $cac
             $url = clean_url((string)($config['feed_url'] ?? ''));
             $reader = new FeedReader();
             return ['kind'=>'rss'] + $reader->read($url, max(1,min(15,(int)($config['limit'] ?? 6))), (bool)($config['verify_tls'] ?? true));
+        case 'penguops-health':
+            if (!$addons->enabled('penguops')) throw new RuntimeException('PenguOps ist nicht installiert.');
+            global $ctx;
+            return ['kind'=>'penguops'] + \PenguLab\OpsStore::report($ctx);
         case 'ipmanager-summary':
             if (!$addons->enabled('ipmanager')) throw new RuntimeException('IP Manager is not installed.');
             $networks = (int)$db->pdo()->query('SELECT COUNT(*) FROM ipm_networks')->fetchColumn();

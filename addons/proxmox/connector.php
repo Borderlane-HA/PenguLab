@@ -50,6 +50,8 @@ return static function(array $integration, HttpClient $http, string $mode='summa
     }
 
     return [
+        'ops_guests'=>array_map(static fn($g)=>['id'=>(string)$g['vmid'],'name'=>(string)($g['name']??$g['vmid']),'state'=>(string)($g['status']??'unknown')],$guests),
+        'ops_resources'=>array_map(static fn($v)=>['id'=>(string)($v['id']??''),'used_percent'=>!empty($v['maxdisk'])?round(100*(float)($v['disk']??0)/(float)$v['maxdisk'],1):null],$storages),
         'service' => 'Proxmox VE',
         'version' => is_array($versionData) ? (string)($versionData['version'] ?? '') : '',
         'nodes_total' => count($nodes),
